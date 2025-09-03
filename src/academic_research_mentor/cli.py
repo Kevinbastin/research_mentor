@@ -10,6 +10,7 @@ from .prompts_loader import load_instructions_from_prompt_md
 from .runtime import build_agent
 from .router import route_and_maybe_run_tool
 from .rich_formatter import print_formatted_response, print_info, print_error, get_formatter
+from .core.bootstrap import bootstrap_registry_if_enabled
 from .literature_review import build_research_context
 
 
@@ -170,6 +171,11 @@ def main() -> None:
     """CLI entrypoint for Academic Research Mentor (thin wrapper)."""
     # Load environment variables from .env file
     _load_env_file()
+
+    # Optional: initialize tool registry (WS2) behind a feature flag
+    discovered = bootstrap_registry_if_enabled()
+    if discovered:
+        print_info(f"Tool registry initialized: {', '.join(discovered)}")
 
     parser = argparse.ArgumentParser(
         description="Academic Research Mentor - AI-powered research assistance with O3-powered literature review",
