@@ -213,6 +213,12 @@ def main() -> None:
         default=None,
         help="Show tool candidates for a goal (uses orchestrator selection), then exit",
     )
+    parser.add_argument(
+        "--recommend",
+        type=str,
+        default=None,
+        help="Recommend the best tool for a goal (uses recommender), then exit",
+    )
 
     try:
         args, _unknown = parser.parse_known_args()
@@ -266,6 +272,26 @@ def main() -> None:
                 print_info(f"No candidates for goal -> {goal}")
         except Exception as e:  # noqa: BLE001
             print_error(f"Show candidates failed: {e}")
+        return
+
+    # Handle recommendation (forces discovery, uses recommender regardless of flag)
+    if getattr(args, 'recommend', None):
+        goal = str(getattr(args, 'recommend'))
+        try:
+            from .tools import auto_discover as _auto, list_tools as _list
+            from .core.recommendation import score_tools
+            _auto()
+            scored = score_tools(goal, _list())
+            if scored:
+                top = scored[0]
+                print_info(f"Top tool: {top[0]} (score={top[1]:.2f}, why={top[2]})")
+                others = ", ".join(f"{n}:{s:.2f}" for n, s, _r in scored[1:])
+                if others:
+                    print_info(f"Others: {others}")
+            else:
+                print_info(f"No suitable tools for goal -> {goal}")
+        except Exception as e:  # noqa: BLE001
+            print_error(f"Recommend failed: {e}")
         return
 
     # Prefer new env vars; keep backward-compatible AGNO_* fallback

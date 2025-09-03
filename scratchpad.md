@@ -28,5 +28,10 @@ WS2 Decisions & Actions (in progress):
 - Test suite expanded (5 tests), all passing under uv/conda.
 
 Upcoming WS3 (not started):
-- Add recommendation scoring beyond static weights; introduce feature flag `FF_AGENT_RECOMMENDATION`.
-- Add fallback policy and begin integrating selection into runtime flow behind a flag.
+Plan for WS3 (next incremental changes):
+- Add recommendation scoring beyond static weights in `core/recommendation.py` (new, <200 LOC).
+- Feature flag: `FF_AGENT_RECOMMENDATION` to gate orchestrator using the scorer.
+- Scoring signals: prefer `o3_search`, penalize `legacy_*`, consider `can_handle`, metadata cost and reliability, basic domain keyword match.
+- Orchestrator: call recommender when flag on; return candidates with rationales (no execution yet).
+- CLI: add `--recommend "<goal>"` to print top tool and reasons.
+- Tests: validate scoring orders `o3_search` > `legacy_arxiv_search`.

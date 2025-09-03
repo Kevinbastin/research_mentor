@@ -16,9 +16,11 @@ from typing import Any, Dict, Optional, List, Tuple
 try:
     # Optional import; available when WS2 registry is bootstrapped
     from ..tools import list_tools, BaseTool
+    from .recommendation import score_tools
 except Exception:  # pragma: no cover
     list_tools = None  # type: ignore
     BaseTool = object  # type: ignore
+    score_tools = None  # type: ignore
 
 
 class Orchestrator:
@@ -45,26 +47,32 @@ class Orchestrator:
         if list_tools is not None:
             try:
                 tools = list_tools()
-                for name, tool in tools.items():
-                    # type: ignore[attr-defined]
-                    can = getattr(tool, "can_handle", lambda *_: True)(context or {})
-                    if can:
-                        # Prefer O3 as primary; legacy as fallback
-                        score = 1.0
-                        if name == "o3_search":
-                            score = 10.0
-                            # If O3 client unavailable, reduce score but keep as candidate
-                            try:
-                                from ..literature_review.o3_client import get_o3_client  # type: ignore
+                # Use recommender when flag enabled
+                import os
 
-                                if not get_o3_client().is_available():
-                                    score = 2.0
-                            except Exception:
-                                # If import fails, keep default O3 priority
-                                pass
-                        elif name.startswith("legacy_"):
-                            score = 0.5
-                        candidates.append((name, score))
+                if score_tools is not None and os.getenv("FF_AGENT_RECOMMENDATION", "false").lower() in ("1", "true", "yes", "on"):
+                    scored = score_tools(str((context or {}).get("goal", "")), tools)
+                    candidates = [(n, s) for (n, s, _r) in scored]
+                else:
+                    for name, tool in tools.items():
+                        # type: ignore[attr-defined]
+                        can = getattr(tool, "can_handle", lambda *_: True)(context or {})
+                        if can:
+                            # Prefer O3 as primary; legacy as fallback
+                            score = 1.0
+                            if name == "o3_search":
+                                score = 10.0
+                                # If O3 client unavailable, reduce score but keep as candidate
+                                try:
+                                    from ..literature_review.o3_client import get_o3_client  # type: ignore
+                                    if not get_o3_client().is_available():
+                                        score = 2.0
+                                except Exception:
+                                    # If import fails, keep default O3 priority
+                                    pass
+                            elif name.startswith("legacy_"):
+                                score = 0.5
+                            candidates.append((name, score))
             except Exception:
                 pass
 
