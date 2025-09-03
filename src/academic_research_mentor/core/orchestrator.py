@@ -11,7 +11,14 @@ Responsibilities (future):
 Small, non-invasive scaffolding for WS1: no runtime changes yet.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List, Tuple
+
+try:
+    # Optional import; available when WS2 registry is bootstrapped
+    from ..tools import list_tools, BaseTool
+except Exception:  # pragma: no cover
+    list_tools = None  # type: ignore
+    BaseTool = object  # type: ignore
 
 
 class Orchestrator:
@@ -34,10 +41,25 @@ class Orchestrator:
 
         For WS1, just return a structured no-op result to validate plumbing.
         """
+        candidates: List[Tuple[str, float]] = []
+        if list_tools is not None:
+            try:
+                tools = list_tools()
+                for name, tool in tools.items():
+                    # type: ignore[attr-defined]
+                    can = getattr(tool, "can_handle", lambda *_: True)(context or {})
+                    if can:
+                        # Basic scoring: prefer tools that explicitly matched keywords (boolean -> score)
+                        score = 1.0
+                        candidates.append((name, score))
+            except Exception:
+                pass
+
         return {
             "ok": True,
             "orchestrator_version": self._version,
             "task": task,
             "context_keys": sorted(list((context or {}).keys())),
-            "note": "Orchestrator scaffold active. No tools executed.",
+            "candidates": sorted(candidates, key=lambda x: x[1], reverse=True),
+            "note": "Orchestrator scaffold active. Selection-only; no execution.",
         }
