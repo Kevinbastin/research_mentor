@@ -10,6 +10,7 @@ from .prompts_loader import load_instructions_from_prompt_md
 from .runtime import build_agent
 from .router import route_and_maybe_run_tool
 from .rich_formatter import print_formatted_response, print_info, print_error, get_formatter
+from .core.bootstrap import bootstrap_registry_if_enabled
 from .literature_review import build_research_context
 
 
@@ -171,6 +172,11 @@ def main() -> None:
     # Load environment variables from .env file
     _load_env_file()
 
+    # Optional: initialize tool registry (WS2) behind a feature flag
+    discovered = bootstrap_registry_if_enabled()
+    if discovered:
+        print_info(f"Tool registry initialized: {', '.join(discovered)}")
+
     parser = argparse.ArgumentParser(
         description="Academic Research Mentor - AI-powered research assistance with O3-powered literature review",
         epilog="Environment variables are automatically loaded from .env file. Use --env-help for configuration details."
@@ -196,6 +202,23 @@ def main() -> None:
         action="store_true",
         help="Show comprehensive help about environment variables, .env file usage, and configuration options, then exit"
     )
+    parser.add_argument(
+        "--list-tools",
+        action="store_true",
+        help="Discover and list available tools (ignores FF_REGISTRY_ENABLED), then exit",
+    )
+    parser.add_argument(
+        "--show-candidates",
+        type=str,
+        default=None,
+        help="Show tool candidates for a goal (uses orchestrator selection), then exit",
+    )
+    parser.add_argument(
+        "--recommend",
+        type=str,
+        default=None,
+        help="Recommend the best tool for a goal (uses recommender), then exit",
+    )
 
     try:
         args, _unknown = parser.parse_known_args()
@@ -216,6 +239,59 @@ def main() -> None:
     # Handle environment help command
     if getattr(args, 'env_help', False):
         _show_env_help()
+        return
+
+    # Handle tool listing (forces discovery)
+    if getattr(args, 'list_tools', False):
+        try:
+            from .tools import auto_discover as _auto, list_tools as _list
+            _auto()
+            names = sorted(list(_list().keys()))
+            if names:
+                print_info(f"Discovered tools ({len(names)}): {', '.join(names)}")
+            else:
+                print_info("No tools discovered.")
+        except Exception as e:  # noqa: BLE001
+            print_error(f"Tool listing failed: {e}")
+        return
+
+    # Handle candidates display (forces discovery, runs selection-only)
+    if getattr(args, 'show_candidates', None):
+        goal = str(getattr(args, 'show_candidates'))
+        try:
+            from .tools import auto_discover as _auto
+            from .core.orchestrator import Orchestrator
+            _auto()
+            orch = Orchestrator()
+            out = orch.run_task("literature_search", context={"goal": goal})
+            cands = out.get("candidates", [])
+            if cands:
+                pretty = ", ".join(f"{n}:{s}" for n, s in cands)
+                print_info(f"Candidates for goal -> {goal}: {pretty}")
+            else:
+                print_info(f"No candidates for goal -> {goal}")
+        except Exception as e:  # noqa: BLE001
+            print_error(f"Show candidates failed: {e}")
+        return
+
+    # Handle recommendation (forces discovery, uses recommender regardless of flag)
+    if getattr(args, 'recommend', None):
+        goal = str(getattr(args, 'recommend'))
+        try:
+            from .tools import auto_discover as _auto, list_tools as _list
+            from .core.recommendation import score_tools
+            _auto()
+            scored = score_tools(goal, _list())
+            if scored:
+                top = scored[0]
+                print_info(f"Top tool: {top[0]} (score={top[1]:.2f}, why={top[2]})")
+                others = ", ".join(f"{n}:{s:.2f}" for n, s, _r in scored[1:])
+                if others:
+                    print_info(f"Others: {others}")
+            else:
+                print_info(f"No suitable tools for goal -> {goal}")
+        except Exception as e:  # noqa: BLE001
+            print_error(f"Recommend failed: {e}")
         return
 
     # Prefer new env vars; keep backward-compatible AGNO_* fallback
