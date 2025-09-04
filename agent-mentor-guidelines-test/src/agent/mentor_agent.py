@@ -49,11 +49,19 @@ IMPORTANT WORKFLOW:
 5. Provide specific, actionable advice
 
 GUIDELINE SOURCES you'll be searching include:
-- Hamming's research methodology principles
-- Research project selection frameworks  
-- Research taste development guidance
-- Academic papers on research processes
-- Community discussions on research best practices
+- Hamming's research methodology principles (gwern.net)
+- Research project selection frameworks (lesswrong.com)
+- Research taste development guidance (colah.github.io, 01.me, cuhk.edu.hk)
+- Research methodology principles (michaelnielsen.org)
+- Research methodology and good science (letters.lossfunk.com)
+- Research process and ML guidance (alignmentforum.org)
+- Mechanistic interpretability research (neelnanda.io)
+- ML research methodology (joschu.net)
+- Student research advice (thoughtforms.life)
+- Academic research practices (febs.onlinelibrary.wiley.com, academic.oup.com)
+- Research methodology guides (researchgate.net)
+- Academic papers on research processes (arxiv.org, lifescied.org)
+- Community discussions on research best practices (news.ycombinator.com)
 
 Your responses should be:
 - Grounded in the retrieved guidelines when available

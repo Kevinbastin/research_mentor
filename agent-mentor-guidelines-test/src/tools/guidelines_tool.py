@@ -14,15 +14,60 @@ def search_research_guidelines(topic: str) -> str:
     config = Config()
     
     # Create targeted search queries for different guideline sources
-    search_queries = [
+    # Prioritize based on topic keywords for better relevance
+    topic_lower = topic.lower()
+    
+    # Base queries for all sources
+    base_queries = [
         f"site:gwern.net {topic} research methodology",
         f"site:lesswrong.com {topic} research project", 
         f"site:colah.github.io {topic} research taste",
         f"site:01.me {topic} research taste",
+        f"site:michaelnielsen.org {topic} research principles",
+        f"site:letters.lossfunk.com {topic} research methodology",
+        f"site:alignmentforum.org {topic} research process",
+        f"site:neelnanda.io {topic} research methodology",
+        f"site:joschu.net {topic} research methodology",
         f"{topic} research methodology site:arxiv.org",
         f"site:lifescied.org {topic} research process",
-        f"site:cuhk.edu.hk {topic} research taste"
+        f"site:cuhk.edu.hk {topic} research taste",
+        f"site:febs.onlinelibrary.wiley.com {topic} research methodology",
+        f"site:researchgate.net {topic} research methodology",
+        f"site:academic.oup.com {topic} research methodology",
+        f"site:thoughtforms.life {topic} research advice"
     ]
+    
+    # Select most relevant queries based on topic
+    if any(keyword in topic_lower for keyword in ['problem', 'choose', 'select', 'pick']):
+        # Prioritize problem selection sources
+        search_queries = [
+            f"site:lesswrong.com {topic} research project",
+            f"site:gwern.net {topic} research methodology",
+            f"site:letters.lossfunk.com {topic} research methodology",
+            f"site:alignmentforum.org {topic} research process",
+            f"site:michaelnielsen.org {topic} research principles"
+        ]
+    elif any(keyword in topic_lower for keyword in ['taste', 'judgment', 'quality', 'good']):
+        # Prioritize research taste sources
+        search_queries = [
+            f"site:colah.github.io {topic} research taste",
+            f"site:01.me {topic} research taste",
+            f"site:cuhk.edu.hk {topic} research taste",
+            f"site:letters.lossfunk.com {topic} research methodology",
+            f"site:thoughtforms.life {topic} research advice"
+        ]
+    elif any(keyword in topic_lower for keyword in ['method', 'process', 'approach', 'how']):
+        # Prioritize methodology sources
+        search_queries = [
+            f"site:michaelnielsen.org {topic} research principles",
+            f"site:gwern.net {topic} research methodology",
+            f"site:letters.lossfunk.com {topic} research methodology",
+            f"site:alignmentforum.org {topic} research process",
+            f"site:neelnanda.io {topic} research methodology"
+        ]
+    else:
+        # Default to diverse mix
+        search_queries = base_queries[:6]
     
     try:
         from langchain_community.tools import DuckDuckGoSearchRun
@@ -31,7 +76,7 @@ def search_research_guidelines(topic: str) -> str:
         all_results = []
         seen_urls = set()
         
-        for query in search_queries[:3]:  # Limit to avoid too many API calls
+        for query in search_queries[:5]:  # Use more queries for better coverage
             try:
                 results = search.run(query)
                 # Parse and filter results (this is a simplified version)
@@ -79,6 +124,24 @@ def _identify_source_type(query: str) -> str:
         return "Research project selection"
     elif "colah.github.io" in query:
         return "Research taste and judgment"
+    elif "michaelnielsen.org" in query:
+        return "Research methodology principles"
+    elif "letters.lossfunk.com" in query:
+        return "Research methodology and good science"
+    elif "alignmentforum.org" in query:
+        return "Research process and ML guidance"
+    elif "neelnanda.io" in query:
+        return "Mechanistic interpretability research"
+    elif "joschu.net" in query:
+        return "ML research methodology"
+    elif "thoughtforms.life" in query:
+        return "Student research advice"
+    elif "febs.onlinelibrary.wiley.com" in query:
+        return "Academic research practices"
+    elif "researchgate.net" in query:
+        return "Research methodology guide"
+    elif "academic.oup.com" in query:
+        return "Academic research practices"
     elif "arxiv.org" in query:
         return "Academic research paper"
     else:
