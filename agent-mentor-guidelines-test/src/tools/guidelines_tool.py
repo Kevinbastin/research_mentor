@@ -154,8 +154,23 @@ def fetch_specific_guideline(url: str, focus_topic: str = "") -> str:
     
     config = Config()
     
-    if url not in config.GUIDELINE_URLS:
-        return f"URL {url} is not in the approved guidelines list."
+    # Allow either exact URL allowlist OR domain allowlist
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        domain = parsed.netloc.replace("www.", "")
+    except Exception:
+        domain = ""
+    
+    allowed_domains = set(config.GUIDELINE_SOURCES.keys())
+    exact_allowed = url in config.GUIDELINE_URLS
+    domain_allowed = domain in allowed_domains
+    
+    if not (exact_allowed or domain_allowed):
+        return (
+            f"URL not allowed: {url}. Allowed domains: "
+            f"{', '.join(sorted(allowed_domains))}"
+        )
     
     try:
         # This would use your web_fetch tool

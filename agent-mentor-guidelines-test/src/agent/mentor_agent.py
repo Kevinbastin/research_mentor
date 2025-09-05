@@ -34,7 +34,7 @@ class ResearchMentorAgent:
             tools=self.tools, 
             verbose=True,
             return_intermediate_steps=True,
-            max_iterations=2  # Reduced from 3 to save costs
+            max_iterations=4  # Allow more steps to reach a final answer
         )
     
     def _create_agent(self):
@@ -87,12 +87,12 @@ Be grounded, specific, and cite guidelines."""
             # Format response with sources
             final_response = self._format_response_with_sources(result["output"], sources)
 
+            # Only include JSON-serializable fields in the cached response
             response_data = {
                 "response": final_response,
                 "guidelines_used": guidelines_used,
                 "tool_calls": tool_calls,
                 "sources": sources,
-                "intermediate_steps": result.get("intermediate_steps", []),
                 "success": True,
                 "cached": False
             }
@@ -115,7 +115,6 @@ Be grounded, specific, and cite guidelines."""
                 "response": f"I apologize, but I encountered an error: {str(e)}",
                 "guidelines_used": [],
                 "tool_calls": [],
-                "intermediate_steps": [],
                 "success": False,
                 "error": str(e),
                 "cached": False
