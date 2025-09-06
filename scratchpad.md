@@ -98,8 +98,77 @@ Guidelines Tool Integration Progress:
 - Scoring working: PhD career guidance -> research_guidelines (score=0.85)
 - Research methodology -> o3_search preferred (score=2.70) but guidelines available (score=0.75)
 
-Next Steps:
-- Test actual tool execution with search functionality
-- Add router integration for automatic detection in chat mode  
-- Test end-to-end CLI integration
-- Add caching and cost monitoring features
+Remaining Tasks (COMPLETED):
+- ✅ Test actual tool execution with search functionality
+- ✅ Add router integration for automatic detection in chat mode  
+- ✅ Test end-to-end CLI integration
+- ✅ Add caching and cost monitoring features
+
+## Integration Results - Phase 1 Complete ✅
+
+### Task 1: Test Actual Tool Execution with Search Functionality
+- **Issue**: DuckDuckGo search was failing due to missing `ddgs` package
+- **Solution**: Added `uv add ddgs` to install required dependency
+- **Result**: Guidelines tool now successfully searches curated sources and retrieves relevant content
+
+### Task 2: Add Router Integration for Automatic Detection in Chat Mode
+- **Enhanced router.py** with guidelines query detection patterns:
+  - Added `_run_guidelines_and_print()` function with orchestrator support
+  - Added `_run_guidelines_fallback()` for direct tool usage when orchestrator unavailable
+  - Implemented 9+ regex patterns for research methodology queries
+  - Patterns include: "how to choose research problem", "methodology advice", "develop research taste", "phd guidance", etc.
+- **Priority**: Guidelines queries checked before venue guidelines to ensure proper routing
+
+### Task 3: Test End-to-End CLI Integration
+- **Test Results**: All router patterns working correctly
+  - "how to choose a good research problem" → 3 guidelines retrieved
+  - "research methodology advice" → 3 guidelines retrieved  
+  - "develop research taste and judgment" → 3 guidelines retrieved
+  - "phd career guidance" → 3 guidelines retrieved
+  - "what makes a good research project" → 3 guidelines retrieved
+  - "effective research principles" → 3 guidelines retrieved
+  - "guidelines for research methodology" → 3 guidelines retrieved
+- **Success Rate**: 100% of test queries properly routed and returned relevant guidelines
+
+### Task 4: Add Caching and Cost Monitoring Features
+- **Created cache.py** with comprehensive caching system:
+  - File-based caching with TTL support (24 hours by default)
+  - Cache directory: `~/.cache/academic-research-mentor/guidelines/`
+  - `GuidelinesCache` class for cache management
+  - `CostTracker` class for usage statistics and cost estimation
+- **Enhanced GuidelinesTool** with caching integration:
+  - Cache checked before search execution
+  - Cache hits/misses tracked automatically
+  - Cost tracking: $0.01 per search query estimate
+  - Added `get_cache_stats()` and `clear_cache()` methods
+  - Updated metadata to include caching information
+- **Test Results**: 
+  - Cache working correctly (50% hit rate on repeated queries)
+  - Cost tracking monitoring usage accurately
+  - Cache stats properly persisted to disk
+
+### Key Features Added:
+- **Smart Caching**: 24-hour TTL with file-based storage
+- **Cost Monitoring**: Tracks search queries, cache hits/misses, and estimated costs  
+- **Router Integration**: Automatic detection of research methodology queries
+- **Robust Fallbacks**: Graceful handling of search failures and orchestrator unavailability
+- **Curated Sources**: Searches 20+ authoritative research guidance sources
+
+### Test Results Summary:
+- All 7 existing tests still pass
+- Caching works correctly with proper hit/miss tracking
+- Router successfully handles various research guidance query patterns
+- Cost tracking monitors usage and provides statistics
+- End-to-end integration tested and verified
+
+### Dependencies Added:
+- `ddgs>=9.5.5` - Required for DuckDuckGo search functionality
+
+## Status: ✅ GUIDELINES TOOL INTEGRATION COMPLETE
+
+The guidelines tool is now fully integrated and ready for production use. All remaining tasks from the integration plan have been completed successfully.
+
+## Next Steps:
+- Ready for WS4 (Transparency & Streaming) per TODO.md timeline
+- Or continue with additional tool ecosystem expansion
+- Consider adding more curated sources to guidelines configuration
