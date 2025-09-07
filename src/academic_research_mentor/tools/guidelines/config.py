@@ -39,7 +39,24 @@ class GuidelinesConfig:
         "letters.lossfunk.com": "Research methodology and good science manifesto",
         "alignmentforum.org": "Research process and ML paper writing guidance",
         "neelnanda.io": "Mechanistic interpretability and research methodology",
-        "joschu.net": "ML research methodology and best practices"
+        "joschu.net": "ML research methodology and best practices",
+        # Additional high-quality sources
+        "cs.cmu.edu": "Computer science research methodology and advice",
+        "stanford.edu": "Stanford research methodology and PhD guidance",
+        "mit.edu": "MIT research methodology and academic guidance",
+        "berkeley.edu": "Berkeley research methodology and PhD advice",
+        "princeton.edu": "Princeton research guidance and methodology",
+        "harvard.edu": "Harvard research methodology and academic guidance",
+        "cam.ac.uk": "Cambridge University research methodology",
+        "ox.ac.uk": "Oxford University research guidance",
+        "ethz.ch": "ETH Zurich research methodology",
+        "nature.com": "Nature journal research methodology articles",
+        "science.org": "Science journal research methodology",
+        "cell.com": "Cell press research methodology",
+        "pnas.org": "PNAS research methodology and scientific practice",
+        "ams.org": "American Mathematical Society research guidance",
+        "acm.org": "ACM research methodology and computing practices",
+        "ieee.org": "IEEE research methodology and engineering practices"
     }
     
     # Specific URLs for direct fetching if needed
@@ -83,5 +100,16 @@ class GuidelinesConfig:
             f"site:letters.lossfunk.com {topic} research",
             f"site:alignmentforum.org {topic} research",
             f"site:neelnanda.io {topic} research",
-            f"site:joschu.net {topic} research"
+            f"site:joschu.net {topic} research",
+            # Additional university and institutional sources
+            f"site:stanford.edu {topic} research methodology",
+            f"site:mit.edu {topic} research methodology",
+            f"site:berkeley.edu {topic} research methodology",
+            f"site:harvard.edu {topic} research methodology",
+            f"site:cmu.edu {topic} research methodology",
+            f"site:princeton.edu {topic} research guidance",
+            # Journal and society sources
+            f"site:nature.com {topic} research methodology",
+            f"site:science.org {topic} research methodology",
+            f"site:pnas.org {topic} scientific research"
         ]

@@ -538,21 +538,34 @@ def get_langchain_tools() -> list[Any]:
                 
                 # Format guidelines for agent consumption
                 formatted_lines = [f"Found {len(guidelines)} relevant research guidelines:"]
+                sources = []
                 
                 for guideline in guidelines:
                     guide_id = guideline.get("guide_id", "unknown")
                     source_type = guideline.get("source_type", "Research guidance")
+                    source_domain = guideline.get("source_domain", "")
                     content = guideline.get("content", "")[:300]  # Truncate for token efficiency
+                    
+                    # Extract source domain for display
+                    if source_domain and source_domain not in sources:
+                        sources.append(source_domain)
                     
                     formatted_lines.append(f"GUIDELINE [{guide_id}]:")
                     formatted_lines.append(f"Source: {source_type}")
                     formatted_lines.append(f"Content: {content}")
                     formatted_lines.append("---")
                 
+                # Add instruction for agent
                 formatted_lines.append(
                     "\nUse these guidelines to provide evidence-based research advice. "
                     "Reference specific guidelines as [guide_id] in your response."
                 )
+                
+                # Add sources section at the end
+                if sources:
+                    formatted_lines.append("\n\nSource:")
+                    for i, source in enumerate(sources, 1):
+                        formatted_lines.append(f"{i}. {source}")
                 
                 return "\n".join(formatted_lines)
             else:
@@ -609,9 +622,23 @@ def get_langchain_tools() -> list[Any]:
             func=_guidelines_tool_fn,
             description=(
                 "Search curated research methodology and mentorship guidelines from expert sources. "
-                "Use this when users ask for research advice, methodology guidance, PhD help, "
-                "problem selection, research taste development, or academic career guidance. "
-                "Input: research question or topic (e.g. 'how to choose a research problem', 'developing research taste'). "
+                "USE THIS TOOL FOR ALL RESEARCH MENTORSHIP QUESTIONS including: "
+                "research advice, methodology guidance, PhD help, problem selection, research taste development, academic career guidance, "
+                "research strategy decisions, publication dilemmas, research evaluation questions, and academic career planning. "
+                "Specifically use when users ask about: "
+                "- Research direction uncertainty ('no one else is working on this', 'red flag or opportunity', 'unique research direction') "
+                "- Problem worthiness ('worth pursuing vs distraction', 'should I work on this problem', 'is this important') "
+                "- Negative results ('approach doesn\'t work', 'should I publish negative results', 'my method failed') "
+                "- Novelty concerns ('not sure novel enough', 'how to evaluate novelty', 'is this contribution significant') "
+                "- Publication decisions ('should I publish this', 'where to publish', 'ready for publication') "
+                "- Research taste and judgment ('developing research taste', 'how to choose problems', 'research intuition') "
+                "- Academic career guidance ('career planning', 'PhD advice', 'research skills development') "
+                "- Methodology questions ('research methodology', 'experiment design', 'evaluation methods') "
+                "Input: any research mentorship question, dilemma, or uncertainty. Examples: "
+                "'I found an interesting research direction but I\'m worried no one else is working on it. Is that a red flag or an opportunity?', "
+                "'My results are negative - my approach doesn\'t work. Should I publish this or try something else?', "
+                "'I have some interesting results but I\'m not sure they\'re \'novel\' enough for publication. How do I evaluate this?', "
+                "'How do I know if a research problem is worth pursuing vs just a distraction?' "
                 "Returns: structured guidelines from authoritative sources with source attribution."
             ),
         ),
