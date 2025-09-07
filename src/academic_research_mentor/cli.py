@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import argparse
+import signal
+import sys
 from typing import Optional, Tuple, Any
 
 from dotenv import load_dotenv
@@ -12,6 +14,7 @@ from .router import route_and_maybe_run_tool
 from .rich_formatter import print_formatted_response, print_info, print_error, get_formatter
 from .core.bootstrap import bootstrap_registry_if_enabled
 from .literature_review import build_research_context
+from .chat_logger import ChatLogger
 
 
 def _load_env_file() -> None:
@@ -167,8 +170,33 @@ Use --check-env to verify your current configuration.
 """)
 
 
+def _cleanup_and_save_session(chat_logger: ChatLogger, exit_command: str = "exit") -> None:
+    """Save the chat session and log the exit command."""
+    # Add the exit turn to the session
+    chat_logger.add_exit_turn(exit_command)
+    
+    # Save the chat session
+    log_file = chat_logger.save_session()
+    if log_file:
+        summary = chat_logger.get_session_summary()
+        print_info(f"Chat session saved to: {log_file}")
+        print_info(f"Session summary: {summary['total_turns']} turns, {summary['session_start'][:10]}")
+
+
+def _signal_handler(signum, frame):
+    """Handle Ctrl+C and other signals gracefully."""
+    signal_name = "Ctrl+C" if signum == signal.SIGINT else f"Signal {signum}"
+    print_info(f"\n🛑 {signal_name} received. Saving chat session...")
+    # The chat_logger will be cleaned up by the finally block
+    sys.exit(0)
+
+
 def main() -> None:
     """CLI entrypoint for Academic Research Mentor (thin wrapper)."""
+    # Set up signal handlers for graceful exit
+    signal.signal(signal.SIGINT, _signal_handler)
+    signal.signal(signal.SIGTERM, _signal_handler)
+    
     # Load environment variables from .env file
     _load_env_file()
 
@@ -362,6 +390,13 @@ def main() -> None:
         _offline_repl(offline_reason or "Unknown reason")
         return
 
+    # Initialize chat logger
+    chat_logger = ChatLogger()
+    
+    # Set chat logger on agent if it supports it (for ReAct mode)
+    if hasattr(agent, 'set_chat_logger'):
+        agent.set_chat_logger(chat_logger)
+
     # Check agent mode to determine routing behavior
     agent_mode = os.environ.get("LC_AGENT_MODE", "react").strip().lower()
     use_manual_routing = agent_mode == "chat"
@@ -373,47 +408,72 @@ def main() -> None:
     print_info(f"Agent mode: {agent_mode}")
     print_info("Type 'exit' to quit")
     formatter.console.print("")
-    while True:
-        try:
-            # Use Rich console for input prompt
-            formatter.console.print("[bold cyan]You:[/bold cyan] ", end="")
-            user = input().strip()
-        except EOFError:
-            break
-        if not user:
-            continue
-        if user.lower() in {"exit", "quit"}:
-            break
-        # In react mode, let the agent decide which tools to use
-        if use_manual_routing:
-            # Chat mode: Build research context and use manual routing
-            research_context = build_research_context(user)
-            
-            if route_and_maybe_run_tool(user):
-                continue
-                
-            if research_context.get("has_research_context", False):
-                context_prompt = research_context.get("context_for_agent", "")
-                enhanced_user_input = f"{context_prompt}\n\nUser Query: {user}"
-            else:
-                enhanced_user_input = user
-        else:
-            # React mode: Let agent decide which tools to use
-            enhanced_user_input = user
-
-        try:
-            # Prefer streaming if available
-            agent.print_response(enhanced_user_input, stream=True)  # type: ignore[attr-defined]
-        except Exception:
+    
+    try:
+        while True:
             try:
-                reply = agent.run(enhanced_user_input)
-                content = getattr(reply, "content", None) or getattr(reply, "text", None) or str(reply)
-                print_formatted_response(content, "Mentor")
-            except Exception as exc:  # noqa: BLE001
-                print_error(f"Mentor response failed: {exc}")
+                # Use Rich console for input prompt
+                formatter.console.print("[bold cyan]You:[/bold cyan] ", end="")
+                user = input().strip()
+            except EOFError:
+                # Handle Ctrl+D (EOF)
+                print_info("\n📝 EOF received. Saving chat session...")
+                _cleanup_and_save_session(chat_logger, "EOF (Ctrl+D)")
+                break
+            if not user:
+                continue
+            if user.lower() in {"exit", "quit"}:
+                # Log the exit command and break
+                _cleanup_and_save_session(chat_logger, user)
+                break
+                
+            # In react mode, let the agent decide which tools to use
+            if use_manual_routing:
+                # Chat mode: Build research context and use manual routing
+                research_context = build_research_context(user)
+                
+                # Check if a tool was called manually
+                tool_called = route_and_maybe_run_tool(user)
+                
+                if tool_called:
+                    # Log the tool call manually
+                    tool_name = tool_called.get("tool_name", "unknown")
+                    chat_logger.add_turn(user, [{"tool_name": tool_name, "score": 3.0}])
+                    continue
+                    
+                if research_context.get("has_research_context", False):
+                    context_prompt = research_context.get("context_for_agent", "")
+                    enhanced_user_input = f"{context_prompt}\n\nUser Query: {user}"
+                else:
+                    enhanced_user_input = user
+            else:
+                # React mode: Let agent decide which tools to use
+                enhanced_user_input = user
 
-        # Add spacing between conversation turns
-        formatter.console.print("")
+            try:
+                # Prefer streaming if available
+                agent.print_response(enhanced_user_input, stream=True)  # type: ignore[attr-defined]
+            except Exception:
+                try:
+                    reply = agent.run(enhanced_user_input)
+                    content = getattr(reply, "content", None) or getattr(reply, "text", None) or str(reply)
+                    
+                    # Log the conversation for chat mode
+                    if use_manual_routing and not hasattr(agent, 'set_chat_logger'):
+                        chat_logger.add_turn(user, [], content)
+                    
+                    print_formatted_response(content, "Mentor")
+                except Exception as exc:  # noqa: BLE001
+                    print_error(f"Mentor response failed: {exc}")
+
+            # Add spacing between conversation turns
+            formatter.console.print("")
+    finally:
+        # Save the chat session when exiting (if not already saved)
+        # This handles unexpected exits or Ctrl+C
+        if not any(turn.get("user_prompt", "").lower() in {"exit", "quit", "eof (ctrl+d)"} 
+                  for turn in chat_logger.current_session):
+            _cleanup_and_save_session(chat_logger, "unexpected_exit")
 
 
 def _offline_repl(reason: str) -> None:
@@ -424,23 +484,45 @@ def _offline_repl(reason: str) -> None:
         print_error(f"Offline reason: {reason}")
     print_info("Falling back to a simple echo mentor")
     formatter.console.print("")
+    
+    # Initialize chat logger for offline mode too
+    chat_logger = ChatLogger()
 
-    while True:
-        try:
-            formatter.console.print("[bold cyan]You:[/bold cyan] ", end="")
-            user = input().strip()
-        except EOFError:
-            break
-        if not user:
-            continue
-        if user.lower() in {"exit", "quit"}:
-            break
-        if route_and_maybe_run_tool(user):
-            continue
-        print_formatted_response(
-            "A few quick questions to calibrate: What is your goal, compute budget, and target venue? Then I can suggest next steps.",
-            "Mentor"
-        )
+    try:
+        while True:
+            try:
+                formatter.console.print("[bold cyan]You:[/bold cyan] ", end="")
+                user = input().strip()
+            except EOFError:
+                print_info("\n📝 EOF received. Saving chat session...")
+                _cleanup_and_save_session(chat_logger, "EOF (Ctrl+D)")
+                break
+            if not user:
+                continue
+            if user.lower() in {"exit", "quit"}:
+                _cleanup_and_save_session(chat_logger, user)
+                break
+                
+            # Check if a tool was called
+            tool_called = route_and_maybe_run_tool(user)
+            if tool_called:
+                # Log the tool call
+                tool_name = tool_called.get("tool_name", "unknown")
+                chat_logger.add_turn(user, [{"tool_name": tool_name, "score": 3.0}])
+                continue
+                
+            # Log the conversation
+            chat_logger.add_turn(user, [], "A few quick questions to calibrate: What is your goal, compute budget, and target venue? Then I can suggest next steps.")
+            
+            print_formatted_response(
+                "A few quick questions to calibrate: What is your goal, compute budget, and target venue? Then I can suggest next steps.",
+                "Mentor"
+            )
 
-        # Add spacing between conversation turns
-        formatter.console.print("")
+            # Add spacing between conversation turns
+            formatter.console.print("")
+    finally:
+        # Save the chat session when exiting (if not already saved)
+        if not any(turn.get("user_prompt", "").lower() in {"exit", "quit", "eof (ctrl+d)"} 
+                  for turn in chat_logger.current_session):
+            _cleanup_and_save_session(chat_logger, "unexpected_exit")

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Optional, Tuple
 import re
+from typing import Any, Optional, Tuple, List, Dict
 
 from .rich_formatter import (
     print_formatted_response, 
@@ -112,6 +112,12 @@ class _LangChainReActAgentWrapper:
         self._system_instructions = system_instructions
         self._SystemMessage = SystemMessage
         self._agent_executor = create_react_agent(llm, tools)
+        self._chat_logger = None
+        self._current_user_input = None
+        
+    def set_chat_logger(self, chat_logger: Any) -> None:
+        """Set the chat logger for recording conversations."""
+        self._chat_logger = chat_logger
 
     def _build_messages(self, user_text: str) -> list[Any]:
         from langchain_core.messages import HumanMessage  # type: ignore
@@ -124,15 +130,53 @@ class _LangChainReActAgentWrapper:
     def print_response(self, user_text: str, stream: bool = True) -> None:  # noqa: ARG002
         # For simplicity, invoke once and print final model response (tool steps are internal)
         try:
+            self._current_user_input = user_text
             result = self._agent_executor.invoke({"messages": self._build_messages(user_text)})
             messages = result.get("messages", []) if isinstance(result, dict) else []
             content = ""
             if messages:
                 last_msg = messages[-1]
                 content = getattr(last_msg, "content", None) or getattr(last_msg, "text", None) or str(last_msg)
+            
+            # Extract tool calls from the result
+            tool_calls = self._extract_tool_calls(result)
+            
+            # Log the conversation turn
+            if self._chat_logger:
+                self._chat_logger.add_turn(user_text, tool_calls, content)
+            
             print_formatted_response(content, "Mentor (ReAct Agent)")
         except Exception as exc:  # noqa: BLE001
             print_error(f"Mentor response failed: {exc}")
+            
+    def _extract_tool_calls(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract tool calls from the agent execution result."""
+        tool_calls = []
+        
+        if not isinstance(result, dict):
+            return tool_calls
+            
+        # Look for tool calls in the messages
+        messages = result.get("messages", [])
+        for msg in messages:
+            # Check for tool messages or AI messages with tool calls
+            if hasattr(msg, 'tool_calls'):
+                # LangChain tool calls format
+                for tool_call in msg.tool_calls:
+                    tool_calls.append({
+                        "tool_name": tool_call.get('name', 'unknown'),
+                        "score": 3.0  # Default score as in examples
+                    })
+            elif hasattr(msg, 'additional_kwargs') and 'tool_calls' in msg.additional_kwargs:
+                # Alternative format for tool calls
+                for tool_call in msg.additional_kwargs['tool_calls']:
+                    tool_name = tool_call.get('function', {}).get('name', 'unknown')
+                    tool_calls.append({
+                        "tool_name": tool_name,
+                        "score": 3.0
+                    })
+                    
+        return tool_calls
 
     def run(self, user_text: str) -> Any:
         class _Reply:

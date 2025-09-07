@@ -178,10 +178,10 @@ def _extract_topic_from_text(text: str) -> Optional[str]:
     return None
 
 
-def route_and_maybe_run_tool(user: str) -> bool:
+def route_and_maybe_run_tool(user: str) -> Optional[Dict[str, str]]:
     s = user.strip()
     if not s:
-        return False
+        return None
 
     # Check for research guidelines queries first (before venue guidelines)
     guidelines_patterns = [
@@ -202,30 +202,30 @@ def route_and_maybe_run_tool(user: str) -> bool:
             query = match.group(1) if match.groups() else s
             topic = query.strip() if query else s.strip()
             _run_guidelines_and_print(s, topic)
-            return True
+            return {"tool_name": "research_guidelines", "query": topic}
 
     m = re.search(r"(?:author\s+)?guidelines(?:\s+for)?\s+([A-Za-z]+)(?:\s+(\d{4}))?", s, flags=re.IGNORECASE)
     if m:
         venue = m.group(1)
         year = int(m.group(2)) if m.group(2) else None
         _run_venue_guidelines_and_print(venue, year)
-        return True
+        return {"tool_name": "venue_guidelines", "venue": venue, "year": year}
 
     if re.search(r"\bopen\s*review\b|\bopenreview\b", s, flags=re.IGNORECASE):
         m2 = re.search(r"(?:open\s*review|openreview)\s*(?:for|about|on)?\s*(.*)$", s, flags=re.IGNORECASE)
         query = (m2.group(1) if m2 and m2.group(1) else s).strip()
         _run_openreview_and_print(query or s)
-        return True
+        return {"tool_name": "openreview", "query": query}
 
     if re.search(r"\$|\\\(|\\\[|\\begin\{equation\}|\\int|\\sum|\\frac|^\s*math\s*:\s*", s, flags=re.IGNORECASE):
         text = re.sub(r"^\s*math\s*:\s*", "", s, flags=re.IGNORECASE)
         _run_math_ground_and_print(text or s)
-        return True
+        return {"tool_name": "math_ground", "text": text}
 
     if re.search(r"\b(experiment|evaluation)\s+plan\b|\bmethodology\b|^\s*validate\s*:\s*", s, flags=re.IGNORECASE):
         plan = re.sub(r"^\s*validate\s*:\s*", "", s, flags=re.IGNORECASE)
         _run_methodology_validate_and_print(plan or s)
-        return True
+        return {"tool_name": "methodology_validate", "plan": plan}
 
     arxiv_patterns = [
         r"\bsearch\s+arxiv\s+for\s+(.+)$",
@@ -245,12 +245,12 @@ def route_and_maybe_run_tool(user: str) -> bool:
             topic = re.sub(r"[.?!\s]+$", "", topic)
             if topic:
                 _run_arxiv_search_and_print(topic)
-                return True
+                return {"tool_name": "arxiv_search", "topic": topic}
 
     topic = _extract_topic_from_text(s)
     if topic:
         print(f"Mentor.tools: Detected topic → {topic}")
         _run_arxiv_search_and_print(topic)
-        return True
+        return {"tool_name": "arxiv_search", "topic": topic}
 
-    return False
+    return None
