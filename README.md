@@ -2,7 +2,7 @@
 
 This is an Academic Research Mentor application that provides AI-powered assistance for academic research tasks. It's built with Python using LangChain for LLM integration and Rich for enhanced console formatting.
 
-## Project layout (WS1)
+## Project layout (WIP: Getting Revamped)
 
 Key directories introduced to improve structure and maintainability:
 
@@ -33,10 +33,6 @@ academic-research-mentor --check-env
 ```bash
 # Run the main CLI (automatically loads .env file)
 uv run academic-research-mentor
-
-# With specific prompt variant
-academic-research-mentor --prompt mentor
-academic-research-mentor --prompt system
 
 # Alternative: use the shimmed entrypoint
 uv run python main.py
