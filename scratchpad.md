@@ -319,3 +319,6 @@ Tested with 4 research queries:
 ✅ **WS1 Complete**: Core scaffolding and architecture
 
 **Ready for WS4**: Transparency & Streaming features
+
+Housekeeping (WS3):
+- Removed redundant `core/fallback.py` in favor of `core/fallback_policy.py` + `core/execution_engine.py` per RULES.md (avoid duplication, keep files <200 LOC). All tests still pass.
