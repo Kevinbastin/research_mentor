@@ -16,7 +16,9 @@ class GuidelinesInjector:
             config: Guidelines configuration. If None, creates default config.
         """
         self.config = config or GuidelinesConfig()
-        self.loader = GuidelinesLoader(self.config.guidelines_path)
+        # Only initialize loader when static mode is enabled to avoid
+        # hard dependency on unified_guidelines.json in dynamic mode.
+        self.loader = GuidelinesLoader(self.config.guidelines_path) if self.config.is_static_mode else None
         self.formatter = GuidelinesFormatter(self.config.max_guidelines)
         self._guidelines_cache: Optional[str] = None
     
@@ -75,6 +77,8 @@ class GuidelinesInjector:
         
         try:
             # Load guidelines
+            if self.loader is None:
+                return ""
             if self.config.categories:
                 # Filter by categories if specified
                 all_guidelines = self.loader.load_guidelines()
