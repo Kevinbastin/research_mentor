@@ -356,3 +356,33 @@ Status: Partial. Implemented CLI transparency for both chat and ReAct modes; per
   - Tests for persistence and stream coalescing/backpressure
 
 Decision: Treat current logging and in-memory runs as WS4-MVP for CLI; defer persistence/streaming/UI to subsequent WS4 steps.
+
+## WS4 – ReAct Streaming & Guidelines Defaults (Completed)
+
+- ReAct step-wise streaming
+  - Implemented incremental printing for ReAct agent output (no more one-shot dump)
+  - `_LangChainReActAgentWrapper.print_response` now uses `agent.stream(..., stream_mode="values")` and prints deltas
+  - Keeps existing transparency logs (Using tool / Found / Sources)
+
+- Guidelines: default to tool-backed (dynamic) mode
+  - `ARM_GUIDELINES_MODE` default changed to `dynamic`
+  - Dynamic mode avoids any JSON file loading/injection; adds a brief instruction to prefer `research_guidelines` tool
+  - Loader is only initialized in `static` mode; graceful no-op in dynamic mode
+  - Removed `unified_guidelines.json` from repo
+
+- Runtime/CLI behavior tightened
+  - Default agent mode now `react` for fresh clones
+  - CLI requires an API key; no offline fallback path (prints error with setup instructions)
+
+- Tests added (passing)
+  - Dynamic guidelines default test: verifies hint to use `research_guidelines` and no JSON dependency
+  - Transparency recording test: `execute_task` records a run in the in-memory store
+
+- WS5 (UI) status
+  - Skipped by decision for now (no UI streaming or dashboard). Focus remains on CLI and tool transparency.
+
+- Next steps
+  - Add deprecation flags to gate legacy tools:
+    - `FF_REMOVE_ARXIV` → hide legacy arxiv wrappers
+    - `FF_REMOVE_OPENREVIEW` → hide openreview wrappers
+  - Add tests to assert flags remove tools from ReAct tools list and registry
