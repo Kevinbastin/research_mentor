@@ -114,14 +114,17 @@ def get_langchain_tools() -> list[Any]:
         reasoning = "\n".join(lines)
         return f"{begin}{reasoning}{end}" if begin or end else reasoning
 
-    tools.append(
+    # Prefer attachments_search first in the tool list so agents try it before external search
+    tools.insert(
+        0,
         Tool(
             name="attachments_search",
             func=wrap(_attachments_tool_fn),
             description=(
-                "Search attached PDF documents for relevant snippets. "
-                "Input: a natural language query. Returns context lines with [file:page] citations."
+                "GROUNDING FIRST: When user-attached PDFs are present, use this FIRST to retrieve relevant "
+                "snippets and ground your answer with [file:page] citations. Only use external tools if the "
+                "attached context is insufficient. Input: research question. Output: snippets with citations."
             ),
-        )
+        ),
     )
     return tools
