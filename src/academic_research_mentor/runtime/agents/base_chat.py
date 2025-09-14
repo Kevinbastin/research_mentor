@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import os
 
 from ...rich_formatter import (
     print_formatted_response,
@@ -33,13 +34,17 @@ class LangChainAgentWrapper:
         self._AIMessage = AIMessage  # type: ignore[attr-defined]
         # Lightweight in-memory conversation buffer (bounded)
         self._history = []
-        self._max_history_messages = 10
+        self._history_enabled: bool = os.environ.get("ARM_HISTORY_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+        try:
+            self._max_history_messages: int = int(os.environ.get("ARM_MAX_HISTORY_MESSAGES", "12"))
+        except Exception:
+            self._max_history_messages = 12
 
     def _build_messages(self, user_text: str) -> Any:
         if self._HumanMessage and self._SystemMessage:
             messages: list[Any] = [self._SystemMessage(content=self._system_instructions)]
             # Append bounded history
-            if self._history:
+            if self._history_enabled and self._history:
                 messages.extend(self._history[-self._max_history_messages :])
             messages.append(self._HumanMessage(content=user_text))
             return messages
@@ -75,9 +80,11 @@ class LangChainAgentWrapper:
                 content = getattr(result, "content", None) or getattr(result, "text", None) or str(result)
                 print_formatted_response(content, "Mentor")
             # Update history buffer when message classes available
-            if self._HumanMessage and self._AIMessage:
+            if self._history_enabled and self._HumanMessage and self._AIMessage:
                 self._history.append(self._HumanMessage(content=user_text))
                 self._history.append(self._AIMessage(content=content))
+                if len(self._history) > self._max_history_messages:
+                    self._history = self._history[-self._max_history_messages :]
         except Exception as exc:  # noqa: BLE001
             print_error(f"Mentor response failed: {exc}")
 
@@ -89,7 +96,15 @@ class LangChainAgentWrapper:
 
         result = self._llm.invoke(self._build_messages(user_text))
         content = getattr(result, "content", None) or getattr(result, "text", None) or str(result)
-        if self._HumanMessage and self._AIMessage:
+        if self._history_enabled and self._HumanMessage and self._AIMessage:
             self._history.append(self._HumanMessage(content=user_text))
             self._history.append(self._AIMessage(content=content))
+            if len(self._history) > self._max_history_messages:
+                self._history = self._history[-self._max_history_messages :]
         return _Reply(content)
+
+    def reset_history(self) -> None:
+        try:
+            self._history = []
+        except Exception:
+            self._history = []
