@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import os
 from typing import Any, Dict, List, Optional
 
 from ...rich_formatter import print_formatted_response, print_error, print_agent_reasoning
@@ -14,18 +15,27 @@ class LangChainReActAgentWrapper:
     """
 
     def __init__(self, llm: Any, system_instructions: str, tools: list[Any]) -> None:
-        from langchain_core.messages import SystemMessage  # type: ignore
+        from langchain_core.messages import SystemMessage, HumanMessage, AIMessage  # type: ignore
         from langgraph.prebuilt import create_react_agent  # type: ignore
 
         self._llm = llm
         self._system_instructions = system_instructions
         self._SystemMessage = SystemMessage
+        self._HumanMessage = HumanMessage
+        self._AIMessage = AIMessage
         self._agent_executor = create_react_agent(llm, tools)
         self._chat_logger = None
         self._current_user_input = None
         # Delimiters for hiding internal/tool reasoning from the response display
         self._internal_begin = "<<<AGENT_INTERNAL_BEGIN>>>"
         self._internal_end = "<<<AGENT_INTERNAL_END>>>"
+        # Lightweight bounded conversation memory (Human/AI pairs only; System provided per turn)
+        self._history: list[Any] = []
+        self._history_enabled: bool = os.environ.get("ARM_HISTORY_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+        try:
+            self._max_history_messages: int = int(os.environ.get("ARM_MAX_HISTORY_MESSAGES", "12"))
+        except Exception:
+            self._max_history_messages = 12
 
     def set_chat_logger(self, chat_logger: Any) -> None:
         """Set the chat logger for recording conversations."""
@@ -34,10 +44,12 @@ class LangChainReActAgentWrapper:
     def _build_messages(self, user_text: str) -> list[Any]:
         from langchain_core.messages import HumanMessage  # type: ignore
 
-        return [
-            self._SystemMessage(content=self._system_instructions),
-            HumanMessage(content=user_text),
-        ]
+        messages: list[Any] = [self._SystemMessage(content=self._system_instructions)]
+        if self._history_enabled and self._history:
+            # Append the tail of history within the cap
+            messages.extend(self._history[-self._max_history_messages :])
+        messages.append(HumanMessage(content=user_text))
+        return messages
 
     def print_response(self, user_text: str, stream: bool = True) -> None:  # noqa: ARG002
         # Render in strict order: (1) Agent's reasoning (via tool panels), then (2) Agent's response
@@ -55,6 +67,16 @@ class LangChainReActAgentWrapper:
             # Log the conversation turn (after content determined)
             if self._chat_logger:
                 self._chat_logger.add_turn(user_text, tool_calls, self._clean_for_display(content, user_text))
+
+            # Update bounded history (Human -> AI)
+            if self._history_enabled and self._HumanMessage and self._AIMessage:
+                try:
+                    self._history.append(self._HumanMessage(content=user_text))
+                    self._history.append(self._AIMessage(content=self._clean_for_display(content, user_text)))
+                    if len(self._history) > self._max_history_messages:
+                        self._history = self._history[-self._max_history_messages :]
+                except Exception:
+                    pass
 
             # Always print the final, cleaned response once
             print_formatted_response(self._clean_for_display(content, user_text), "Agent's response")
@@ -102,7 +124,23 @@ class LangChainReActAgentWrapper:
         if messages:
             last_msg = messages[-1]
             content = getattr(last_msg, "content", None) or getattr(last_msg, "text", None) or str(last_msg)
-        return _Reply(self._clean_for_display(content, user_text))
+        cleaned = self._clean_for_display(content, user_text)
+        if self._history_enabled and self._HumanMessage and self._AIMessage:
+            try:
+                self._history.append(self._HumanMessage(content=user_text))
+                self._history.append(self._AIMessage(content=cleaned))
+                if len(self._history) > self._max_history_messages:
+                    self._history = self._history[-self._max_history_messages :]
+            except Exception:
+                pass
+        return _Reply(cleaned)
+
+    def reset_history(self) -> None:
+        """Clear the in-memory conversation history for this agent instance."""
+        try:
+            self._history = []
+        except Exception:
+            self._history = []
 
     def _clean_for_display(self, content: str, user_text: Optional[str]) -> str:
         """Strip internal reasoning blocks and remove user-echo prefixes for display.

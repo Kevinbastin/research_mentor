@@ -43,6 +43,16 @@ def online_repl(agent: Any, loaded_variant: str) -> None:
                 break
             if not user:
                 continue
+            if user.lower() in {"/reset", "reset"}:
+                if hasattr(agent, 'reset_history'):
+                    try:
+                        agent.reset_history()  # type: ignore[attr-defined]
+                        print_info("Conversation memory cleared (in this session).")
+                    except Exception:
+                        print_info("Failed to clear conversation memory.")
+                else:
+                    print_info("This agent does not support clearing memory in this mode.")
+                continue
             if user.lower() in {"exit", "quit"}:
                 cleanup_and_save_session(chat_logger, user)
                 break
