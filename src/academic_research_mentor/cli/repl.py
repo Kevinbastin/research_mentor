@@ -5,13 +5,16 @@ from typing import Any
 
 from ..rich_formatter import print_formatted_response, print_info, print_error, get_formatter, print_user_input
 from ..rich_ui.io_helpers import print_stage_badge
-from ..core.stage_detector import detect_stage
-from .resume import handle_resume_command
-from ..router import route_and_maybe_run_tool
-from ..literature_review import build_research_context
-from ..chat_logger import ChatLogger
 from .session import cleanup_and_save_session
 from ..runtime.telemetry import get_usage as _telemetry_usage, get_metrics as _telemetry_metrics
+from .repl_helpers import (
+    create_session_stack,
+    safe_detect_stage,
+    handle_system_command,
+    process_manual_turn,
+    build_react_enhanced_input,
+    run_agent_turn,
+)
 """REPL with optional context enrichment from attachments and tools."""
 
 
@@ -19,13 +22,20 @@ from ..runtime.telemetry import get_usage as _telemetry_usage, get_metrics as _t
 
 
 def online_repl(agent: Any, loaded_variant: str) -> None:
-    chat_logger = ChatLogger()
+    agent_mode = os.environ.get("LC_AGENT_MODE", "react").strip().lower()
+    use_manual_routing = agent_mode == "chat"
+
+    session_logger, chat_logger = create_session_stack(
+        {"loaded_prompt_variant": loaded_variant, "agent_mode": agent_mode}
+    )
 
     if hasattr(agent, 'set_chat_logger'):
         agent.set_chat_logger(chat_logger)
-
-    agent_mode = os.environ.get("LC_AGENT_MODE", "react").strip().lower()
-    use_manual_routing = agent_mode == "chat"
+    if hasattr(agent, 'set_session_logger'):
+        try:
+            agent.set_session_logger(session_logger)
+        except Exception:
+            pass
 
     formatter = get_formatter()
     formatter.print_rule("Academic Research Mentor")
@@ -39,145 +49,51 @@ def online_repl(agent: Any, loaded_variant: str) -> None:
             try:
                 formatter.console.print("[bold cyan]You:[/bold cyan] ", end="")
                 user = input().strip()
-                # Detect and show stage badge before echoing user content
-                try:
-                    st = detect_stage(user)
-                    if hasattr(chat_logger, "set_pending_stage"):
-                        chat_logger.set_pending_stage(st)
-                    print_stage_badge(str(st.get("code", "")).upper() or "A", str(st.get("name", "")).strip() or "Pre idea", float(st.get("confidence", 0.0)))
-                except Exception:
-                    pass
-                print_user_input(user)
+                session_logger.log_event("raw_input", {"text": user})
             except EOFError:
                 print_info("\n📝 EOF received. Saving chat session...")
-                cleanup_and_save_session(chat_logger, "EOF (Ctrl+D)")
+                cleanup_and_save_session(chat_logger, "EOF (Ctrl+D)", session_logger)
                 break
-            if not user:
-                continue
-            if user.lower() in {"/reset", "reset"}:
-                if hasattr(agent, 'reset_history'):
-                    try:
-                        agent.reset_history()  # type: ignore[attr-defined]
-                        print_info("Conversation memory cleared (in this session).")
-                    except Exception:
-                        print_info("Failed to clear conversation memory.")
-                else:
-                    print_info("This agent does not support clearing memory in this mode.")
-                continue
-            if user.lower().startswith("/resume"):
-                handle_resume_command(agent, user)
-                continue
-            if user.lower() in {"exit", "quit"}:
-                cleanup_and_save_session(chat_logger, user)
+
+            outcome = handle_system_command(user, agent, session_logger, allow_resume=True)
+            if outcome.exit_command:
+                cleanup_and_save_session(chat_logger, outcome.exit_command, session_logger)
                 break
+            if outcome.handled:
+                formatter.console.print("")
+                continue
+
+            turn_number = chat_logger.next_turn_number()
+            session_logger.start_turn(turn_number, user)
+
+            stage = safe_detect_stage(user, chat_logger, session_logger)
+            if stage:
+                print_stage_badge(
+                    str(stage.get("code", "")).upper() or "A",
+                    str(stage.get("name", "")).strip() or "Pre idea",
+                    float(stage.get("confidence", 0.0)),
+                )
+            print_user_input(user)
 
             if use_manual_routing:
-                research_context = build_research_context(user)
-                tool_called = route_and_maybe_run_tool(user)
-                if tool_called:
-                    tool_name = tool_called.get("tool_name", "unknown")
-                    chat_logger.add_turn(user, [{"tool_name": tool_name, "score": 3.0}])
+                manual = process_manual_turn(user, session_logger, enable_research_context=True)
+                if manual.consumed:
+                    chat_logger.add_turn(user, manual.tool_calls)
+                    formatter.console.print("")
                     continue
-                if research_context.get("has_research_context", False):
-                    context_prompt = research_context.get("context_for_agent", "")
-                    enhanced_user_input = f"{context_prompt}\n\nUser Query: {user}"
-                else:
-                    enhanced_user_input = user
+                enhanced_user_input = manual.enhanced_input
             else:
-                # For ReAct/default mode, enrich the user input with attached PDF context if available
-                try:
-                    from ..attachments import has_attachments as _has_att, search as _att_search
-                    from ..runtime.tool_impls import (
-                        guidelines_tool_fn as _guidelines_tool,  # type: ignore
-                        experiment_planner_tool_fn as _exp_plan,  # type: ignore
-                    )
-                    from ..runtime.tool_helpers import registry_tool_call as _tool_call
-                    # Simple contextual triggers
-                    lower_q = user.lower()
-                    mentorship_triggers = [
-                        "novel", "novelty", "methodology", "publish", "publication",
-                        "problem selection", "career", "taste", "mentor", "guideline",
-                    ]
-                    literature_triggers = [
-                        "related work", "literature", "papers", "sota", "baseline",
-                        "survey", "prior work",
-                    ]
-                    experiment_triggers = [
-                        "experiment", "experiments", "hypothesis", "ablation",
-                        "evaluation plan", "setup", "metrics",
-                    ]
-                    wants_guidelines = any(k in lower_q for k in mentorship_triggers)
-                    wants_literature = any(k in lower_q for k in literature_triggers)
-                    wants_experiments = any(k in lower_q for k in experiment_triggers)
-                    if _has_attachments := _has_att():
-                        results = _att_search(user, k=6)
-                        if results:
-                            lines: list[str] = [
-                                "Attached PDF context (top snippets):",
-                            ]
-                            for r in results[:6]:
-                                file = r.get("file", "file.pdf")
-                                page = r.get("page", 1)
-                                text = (r.get("text", "") or "").strip().replace("\n", " ")
-                                if len(text) > 220:
-                                    text = text[:220] + "…"
-                                lines.append(f"- [{file}:{page}] {text}")
-                            # Optional: add mentorship guidelines context
-                            if wants_guidelines:
-                                try:
-                                    gl = _guidelines_tool(user) or ""
-                                    gl = str(gl).strip()
-                                    if gl:
-                                        lines.append("")
-                                        lines.append("Mentorship guidelines context (summary):")
-                                        for ln in gl.splitlines()[:8]:
-                                            if ln.strip():
-                                                lines.append(ln.strip())
-                                except Exception:
-                                    pass
-                            # Defer literature review to the agent; do not call o3_search here
-                            if wants_literature:
-                                lines.append("")
-                                lines.append("Note: After grounding and mentorship guidance, consult literature_search to add 1–2 anchors.")
-                            # Optional: add experiment plan preview
-                            if wants_experiments:
-                                try:
-                                    plan = _exp_plan(user) or ""
-                                    plan = str(plan).strip()
-                                    if plan:
-                                        lines.append("")
-                                        lines.append("Experiment plan (preview):")
-                                        for ln in plan.splitlines()[:12]:
-                                            if ln.strip():
-                                                lines.append(ln.strip())
-                                except Exception:
-                                    pass
-                            context_block = "\n".join(lines)
-                            enhanced_user_input = (
-                                f"{context_block}\n\n"
-                                f"Instruction: Ground your answer FIRST on the attached PDF context above when making claims; "
-                                f"include [file:page] citations. THEN, if it strengthens mentorship advice, incorporate insights from the "
-                                f"guidelines and literature context (summarize briefly and avoid over-citation).\n\n"
-                                f"User Question: {user}"
-                            )
-                        else:
-                            enhanced_user_input = user
-                    else:
-                        enhanced_user_input = user
-                except Exception:
-                    enhanced_user_input = user
+                enhanced_user_input = build_react_enhanced_input(user, session_logger)
 
-            try:
-                agent.print_response(enhanced_user_input, stream=True)  # type: ignore[attr-defined]
-            except Exception:
-                try:
-                    reply = agent.run(enhanced_user_input)
-                    content = getattr(reply, "content", None) or getattr(reply, "text", None) or str(reply)
-                    if use_manual_routing and not hasattr(agent, 'set_chat_logger'):
-                        chat_logger.add_turn(user, [], content)
-                    print_formatted_response(content, "Mentor")
-                except Exception as exc:  # noqa: BLE001
-                    print_error(f"Mentor response failed: {exc}")
+            run_agent_turn(
+                agent,
+                user,
+                enhanced_user_input,
+                use_manual_routing=use_manual_routing,
+                chat_logger=chat_logger,
+                session_logger=session_logger,
+                turn_number=turn_number,
+            )
 
             formatter.console.print("")
     finally:
@@ -194,7 +110,7 @@ def online_repl(agent: Any, loaded_variant: str) -> None:
         except Exception:
             pass
         if not any(turn.get("user_prompt", "").lower() in {"exit", "quit", "eof (ctrl+d)"} for turn in chat_logger.current_session):
-            cleanup_and_save_session(chat_logger, "unexpected_exit")
+            cleanup_and_save_session(chat_logger, "unexpected_exit", session_logger)
 
 
 def offline_repl(reason: str) -> None:
@@ -206,38 +122,51 @@ def offline_repl(reason: str) -> None:
     print_info("Falling back to a simple echo mentor")
     formatter.console.print("")
 
-    chat_logger = ChatLogger()
+    metadata = {"mode": "offline"}
+    if reason:
+        metadata["offline_reason"] = reason
+    session_logger, chat_logger = create_session_stack(metadata)
 
     try:
         while True:
             try:
                 formatter.console.print("[bold cyan]You:[/bold cyan] ", end="")
                 user = input().strip()
-                try:
-                    st = detect_stage(user)
-                    if hasattr(chat_logger, "set_pending_stage"):
-                        chat_logger.set_pending_stage(st)
-                    print_stage_badge(str(st.get("code", "")).upper() or "A", str(st.get("name", "")).strip() or "Pre idea", float(st.get("confidence", 0.0)))
-                except Exception:
-                    pass
-                print_user_input(user)
+                session_logger.log_event("raw_input", {"text": user})
             except EOFError:
                 print_info("\n📝 EOF received. Saving chat session...")
-                cleanup_and_save_session(chat_logger, "EOF (Ctrl+D)")
+                cleanup_and_save_session(chat_logger, "EOF (Ctrl+D)", session_logger)
                 break
-            if not user:
-                continue
-            if user.lower() in {"exit", "quit"}:
-                cleanup_and_save_session(chat_logger, user)
+            outcome = handle_system_command(user, agent=None, session_logger=session_logger, allow_resume=False)
+            if outcome.exit_command:
+                cleanup_and_save_session(chat_logger, outcome.exit_command, session_logger)
                 break
-
-            tool_called = route_and_maybe_run_tool(user)
-            if tool_called:
-                tool_name = tool_called.get("tool_name", "unknown")
-                chat_logger.add_turn(user, [{"tool_name": tool_name, "score": 3.0}])
+            if outcome.handled:
+                formatter.console.print("")
                 continue
 
-            chat_logger.add_turn(user, [], "A few quick questions to calibrate: What is your goal, compute budget, and target venue? Then I can suggest next steps.")
+            turn_number = chat_logger.next_turn_number()
+            session_logger.start_turn(turn_number, user)
+
+            stage = safe_detect_stage(user, chat_logger, session_logger)
+            if stage:
+                print_stage_badge(
+                    str(stage.get("code", "")).upper() or "A",
+                    str(stage.get("name", "")).strip() or "Pre idea",
+                    float(stage.get("confidence", 0.0)),
+                )
+            print_user_input(user)
+
+            manual = process_manual_turn(user, session_logger, enable_research_context=False)
+            if manual.consumed:
+                chat_logger.add_turn(user, manual.tool_calls)
+                continue
+
+            chat_logger.add_turn(
+                user,
+                [],
+                "A few quick questions to calibrate: What is your goal, compute budget, and target venue? Then I can suggest next steps.",
+            )
 
             print_formatted_response(
                 "A few quick questions to calibrate: What is your goal, compute budget, and target venue? Then I can suggest next steps.",
@@ -247,4 +176,4 @@ def offline_repl(reason: str) -> None:
             formatter.console.print("")
     finally:
         if not any(turn.get("user_prompt", "").lower() in {"exit", "quit", "eof (ctrl+d)"} for turn in chat_logger.current_session):
-            cleanup_and_save_session(chat_logger, "unexpected_exit")
+            cleanup_and_save_session(chat_logger, "unexpected_exit", session_logger)

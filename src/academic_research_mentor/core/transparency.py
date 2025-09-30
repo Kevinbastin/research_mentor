@@ -15,6 +15,8 @@ import os
 import json
 from pathlib import Path
 
+from ..session_logging import log_transparency_event
+
 
 @dataclass
 class ToolEvent:
@@ -184,6 +186,7 @@ class TransparencyStore:
 
     def _emit(self, event: Dict[str, Any]) -> None:
         # Fire-and-forget; guard each listener
+        log_transparency_event(event)
         for cb in list(self._listeners):
             try:
                 cb(event)

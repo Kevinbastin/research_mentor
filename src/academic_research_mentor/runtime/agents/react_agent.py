@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from ...rich_formatter import print_formatted_response, print_error, print_agent_reasoning
 from ...core.stage_detector import detect_stage
+from ...session_logging import SessionLogManager
 
 
 class LangChainReActAgentWrapper:
@@ -27,6 +28,7 @@ class LangChainReActAgentWrapper:
         self._agent_executor = create_react_agent(llm, tools)
         self._chat_logger = None
         self._current_user_input = None
+        self._session_logger: Optional[SessionLogManager] = None
         # Delimiters for hiding internal/tool reasoning from the response display
         self._internal_begin = "<<<AGENT_INTERNAL_BEGIN>>>"
         self._internal_end = "<<<AGENT_INTERNAL_END>>>"
@@ -41,6 +43,9 @@ class LangChainReActAgentWrapper:
     def set_chat_logger(self, chat_logger: Any) -> None:
         """Set the chat logger for recording conversations."""
         self._chat_logger = chat_logger
+
+    def set_session_logger(self, session_logger: SessionLogManager) -> None:
+        self._session_logger = session_logger
 
     def _build_messages(self, user_text: str) -> list[Any]:
         from langchain_core.messages import HumanMessage  # type: ignore
@@ -57,6 +62,8 @@ class LangChainReActAgentWrapper:
         try:
             self._current_user_input = user_text
             content = ""
+            if self._session_logger:
+                self._session_logger.log_event("agent_invoked", {"history_len": len(self._history), "input_preview": user_text[:200]})
             # Invoke once synchronously so tools can print their reasoning panels first
             result = self._agent_executor.invoke({"messages": self._build_messages(user_text)})
             messages = result.get("messages", []) if isinstance(result, dict) else []
@@ -64,6 +71,8 @@ class LangChainReActAgentWrapper:
                 last_msg = messages[-1]
                 content = getattr(last_msg, "content", None) or getattr(last_msg, "text", None) or str(last_msg)
             tool_calls = self._extract_tool_calls(result)
+            if self._session_logger:
+                self._session_logger.record_tool_calls(tool_calls)
 
             # Log the conversation turn (after content determined) with stage detection
             if self._chat_logger:
@@ -84,9 +93,14 @@ class LangChainReActAgentWrapper:
                     pass
 
             # Always print the final, cleaned response once
-            print_formatted_response(self._clean_for_display(content, user_text), "Agent's response")
+            cleaned = self._clean_for_display(content, user_text)
+            if self._session_logger:
+                self._session_logger.log_event("agent_response", {"content": cleaned, "raw": content})
+            print_formatted_response(cleaned, "Agent's response")
         except Exception as exc:  # noqa: BLE001
             print_error(f"Mentor response failed: {exc}")
+            if self._session_logger:
+                self._session_logger.log_event("agent_failure", {"error": str(exc)})
 
     def _extract_tool_calls(self, result: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Extract tool calls from the agent execution result."""
@@ -130,6 +144,8 @@ class LangChainReActAgentWrapper:
             last_msg = messages[-1]
             content = getattr(last_msg, "content", None) or getattr(last_msg, "text", None) or str(last_msg)
         cleaned = self._clean_for_display(content, user_text)
+        if self._session_logger:
+            self._session_logger.log_event("agent_response", {"content": cleaned, "raw": content, "mode": "run"})
         if self._history_enabled and self._HumanMessage and self._AIMessage:
             try:
                 self._history.append(self._HumanMessage(content=user_text))

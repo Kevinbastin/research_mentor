@@ -6,11 +6,13 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
+from .session_logging import SessionLogManager
+
 
 class ChatLogger:
     """Logs chat conversations in JSON format similar to the provided examples."""
     
-    def __init__(self, log_dir: str = "convo-logs"):
+    def __init__(self, log_dir: str = "convo-logs", session_logger: Optional[SessionLogManager] = None):
         self.log_dir = Path(log_dir)
         # Create directory if it doesn't exist (with parents)
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -18,6 +20,7 @@ class ChatLogger:
         self.session_start_time = datetime.now()
         self._exit_handler_registered = False
         self._pending_stage: Optional[Dict[str, Any]] = None
+        self._session_logger = session_logger
         
     def _generate_log_filename(self) -> str:
         """Generate a unique log filename based on timestamp."""
@@ -37,8 +40,9 @@ class ChatLogger:
                  ai_response: Optional[str] = None,
                  stage: Optional[Dict[str, Any]] = None) -> None:
         """Add a conversation turn to the current session."""
+        turn_number = len(self.current_session) + 1
         turn_data: Dict[str, Any] = {
-            "turn": len(self.current_session) + 1,
+            "turn": turn_number,
             "user_prompt": user_prompt,
             "tool_calls": tool_calls,
             "ai_response": ai_response
@@ -49,16 +53,32 @@ class ChatLogger:
         # Clear pending stage after consumption
         self._pending_stage = None
         self.current_session.append(turn_data)
+        if self._session_logger:
+            self._session_logger.finalize_turn(turn_number, {
+                "user_prompt": user_prompt,
+                "tool_calls": tool_calls,
+                "ai_response": ai_response,
+                "stage": stage_payload,
+            })
         
     def add_exit_turn(self, exit_command: str = "exit") -> None:
         """Add an exit turn to the current session."""
+        turn_number = len(self.current_session) + 1
         turn_data = {
-            "turn": len(self.current_session) + 1,
+            "turn": turn_number,
             "user_prompt": exit_command,
             "tool_calls": [],
             "ai_response": None
         }
         self.current_session.append(turn_data)
+        if self._session_logger:
+            self._session_logger.log_event("exit_recorded", {"exit_command": exit_command, "turn": turn_number})
+            self._session_logger.finalize_turn(turn_number, {
+                "user_prompt": exit_command,
+                "tool_calls": [],
+                "ai_response": None,
+                "exit": True,
+            })
         
     def save_session(self) -> str:
         """Save the current session to a JSON file."""
@@ -69,8 +89,16 @@ class ChatLogger:
         
         with open(log_file, 'w', encoding='utf-8') as f:
             json.dump(self.current_session, f, indent=2, ensure_ascii=False)
+
+        if self._session_logger:
+            summary = self.get_session_summary()
+            self._session_logger.attach_metadata("chat_log_path", str(log_file))
+            self._session_logger.attach_metadata("total_turns", summary["total_turns"])
             
         return str(log_file)
+
+    def next_turn_number(self) -> int:
+        return len(self.current_session) + 1
         
     def get_session_summary(self) -> Dict[str, Any]:
         """Get a summary of the current session."""

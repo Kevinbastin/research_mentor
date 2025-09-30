@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from ..rich_formatter import print_info
 from ..chat_logger import ChatLogger
+from ..session_logging import SessionLogManager, set_active_session_logger
 
 
 def load_env_file() -> None:
@@ -38,13 +39,16 @@ def load_env_file() -> None:
         print(f"Warning: Failed to load .env file: {e}")
 
 
-def cleanup_and_save_session(chat_logger: ChatLogger, exit_command: str = "exit") -> None:
+def cleanup_and_save_session(chat_logger: ChatLogger, exit_command: str = "exit", session_logger: SessionLogManager | None = None) -> None:
     chat_logger.add_exit_turn(exit_command)
     log_file = chat_logger.save_session()
     if log_file:
         summary = chat_logger.get_session_summary()
         print_info(f"Chat session saved to: {log_file}")
         print_info(f"Session summary: {summary['total_turns']} turns, {summary['session_start'][:10]}")
+    if session_logger:
+        session_logger.finalize(exit_command)
+        set_active_session_logger(None)
 
 
 def signal_handler(signum, frame):

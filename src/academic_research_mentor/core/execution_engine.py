@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional, List
 import time
 
 from ..rich_formatter import print_info, print_error
+from ..session_logging import get_active_session_logger
 from .transparency import get_transparency_store
 
 
@@ -101,6 +102,9 @@ def try_tool_with_retries(tools: Dict[str, Any], tool_name: str, score: float,
         "backoff_count": backoff_count
     }
     store.start_run(tool_name, run_id, metadata=metadata)
+    logger = get_active_session_logger()
+    if logger:
+        logger.link_transparency_run(run_id, tool_name)
     
     # Print status information if tool is degraded or in backoff
     status_note = ""
