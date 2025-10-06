@@ -7,6 +7,8 @@ Accelerate AI research with AI. We are building an AI Research Mentor that guide
 - Research-aware CLI powered by LangChain agents and dynamic tool routing.
 - O3-backed literature search with graceful fallbacks and citation synthesis.
 - Mentorship guidelines and experiment planning helpers to keep projects on track.
+- File and PDF ingestion so the mentor can ground responses in user-provided material.
+- Conversation logging with the ability to resume saved sessions from the CLI.
 
 ## Setup
 ```bash
