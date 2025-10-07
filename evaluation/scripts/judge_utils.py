@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -77,10 +78,34 @@ def build_judge_clients(specs: Sequence[str]) -> List[Tuple[str, Any]]:
             if ChatGoogleGenerativeAI is None:
                 raise RuntimeError("langchain-google-genai not available")
             client = ChatGoogleGenerativeAI(model=model, temperature=0.0, max_output_tokens=1024)
-        elif provider in {"openai", "azure", "openrouter"}:
+        elif provider in {"openai", "azure"}:
             if ChatOpenAI is None:
                 raise RuntimeError("langchain-openai not available")
             client = ChatOpenAI(model=model, temperature=0.0, max_tokens=1024)
+        elif provider == "openrouter":
+            if ChatOpenAI is None:
+                raise RuntimeError("langchain-openai not available")
+            api_key = os.environ.get("OPENROUTER_API_KEY")
+            if not api_key:
+                raise RuntimeError("OPENROUTER_API_KEY must be set for openrouter judges")
+            base_url = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+            headers: Dict[str, str] = {}
+            referer = os.environ.get("OPENROUTER_HTTP_REFERER")
+            title = os.environ.get("OPENROUTER_TITLE")
+            if referer:
+                headers["HTTP-Referer"] = referer
+            if title:
+                headers["X-Title"] = title
+            client_kwargs: Dict[str, Any] = {
+                "model": model,
+                "api_key": api_key,
+                "base_url": base_url,
+                "temperature": 0.0,
+                "max_tokens": 1024,
+            }
+            if headers:
+                client_kwargs["default_headers"] = headers
+            client = ChatOpenAI(**client_kwargs)
         else:
             raise ValueError(f"Unsupported provider '{provider}' in {raw}")
         clients.append((raw, client))

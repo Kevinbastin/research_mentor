@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from academic_research_mentor.rich_formatter import print_error, print_info
+from academic_research_mentor.cli.session import load_env_file
 
 from .judge_metrics import METRIC_SPECS, MetricSpec
 from .judge_utils import (
@@ -41,6 +43,14 @@ def evaluate_metric(
                 "confidence": parsed.get("confidence"),
             }
             score = parsed.get("score")
+            if isinstance(score, str):
+                try:
+                    score = float(score.strip())
+                except ValueError:
+                    try:
+                        score = int(score.strip())
+                    except ValueError:
+                        score = None
             if isinstance(score, (int, float)):
                 entry["score"] = float(score)
             else:
@@ -61,12 +71,25 @@ def evaluate_metric(
     return {"score": aggregated, "judges": judge_outputs}
 
 
+def _sanitize_label(label: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9._-]+", "_", label.strip())
+    return cleaned or "default"
+
+
+def _derive_label(judge_specs: Sequence[str], provided: Optional[str]) -> str:
+    if provided:
+        return _sanitize_label(provided)
+    combined = "__".join(spec.replace("/", "-") for spec in judge_specs)
+    return _sanitize_label(combined or "default")
+
+
 def run_judges(
     stage: str,
     prompt_ids: Optional[Sequence[str]],
     judge_specs: Sequence[str],
     annotator: str,
     force: bool,
+    output_label: Optional[str],
 ) -> Dict[str, Any]:
     if not judge_specs:
         raise ValueError("At least one --judge is required")
@@ -74,7 +97,10 @@ def run_judges(
     judge_clients = build_judge_clients(judge_specs)
     stage_letter, stage_folder = normalize_stage(stage)
     _, analysis_dir, _ = ensure_stage_directories(stage_folder)
-    placeholder_csv = analysis_dir / "annotation_placeholders.csv"
+    label = _derive_label(judge_specs, output_label)
+    output_dir = analysis_dir / label
+    output_dir.mkdir(parents=True, exist_ok=True)
+    placeholder_csv = output_dir / "annotation_placeholders.csv"
 
     meta_files = sorted(analysis_dir.glob("*_meta.json"))
     prompt_filter = set(prompt_ids) if prompt_ids else None
@@ -140,15 +166,17 @@ def run_judges(
             "generated_at": timestamp,
             "metrics": metric_results,
             "judge_models": [name for name, _ in judge_clients],
+            "output_label": label,
         }
-        save_judge_payload(analysis_dir / f"{prompt_id}_judges.json", payload)
+        save_judge_payload(output_dir / f"{prompt_id}_judges.json", payload)
         summaries.append(payload)
-        print_info(f"Scored {prompt_id}: {sorted(metric_results.keys())}")
+        print_info(f"Scored {prompt_id} [{label}]: {sorted(metric_results.keys())}")
 
     return {
         "stage": stage_letter,
         "processed": len(summaries),
         "judged_prompts": [data["prompt_id"] for data in summaries],
+        "output_label": label,
     }
 
 
@@ -169,11 +197,16 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Judge spec provider:model (repeat for multiple)",
     )
     parser.add_argument("--annotator", required=True, help="Name recorded in annotation CSV")
+    parser.add_argument(
+        "--label",
+        help="Optional label for organizing outputs under evaluation/results/analysis_reports/<stage>/<label>",
+    )
     parser.add_argument("--force", action="store_true", help="Overwrite existing annotator rows")
     return parser.parse_args(argv)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    load_env_file()
     args = parse_args(argv)
     try:
         summary = run_judges(
@@ -182,13 +215,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             judge_specs=args.judges,
             annotator=args.annotator,
             force=args.force,
+            output_label=args.label,
         )
     except Exception as exc:  # noqa: BLE001
         print_error(f"Judge run failed: {exc}")
         return 1
 
     print_info(
-        f"Completed judge run for {summary['stage']} — processed {summary['processed']} prompt(s)."
+        f"Completed judge run for {summary['stage']} ({summary['output_label']}) — processed {summary['processed']} prompt(s)."
     )
     return 0
 
