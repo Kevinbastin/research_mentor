@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 import os
 
 from ..base_tool import BaseTool
-from .providers import execute_openrouter_search, execute_tavily_search
+from .providers import HTTPX_AVAILABLE, execute_openrouter_search, execute_tavily_search
 
 
 class WebSearchTool(BaseTool):
@@ -110,7 +110,12 @@ class WebSearchTool(BaseTool):
     def is_available(self) -> bool:
         if self._client is not None:
             return True
-        return self._ensure_client()
+        if self._ensure_client():
+            return True
+        api_key = str(self._config.get("openrouter_api_key") or os.getenv("OPENROUTER_API_KEY", "")).strip()
+        if api_key and HTTPX_AVAILABLE:
+            return True
+        return False
 
     def execute(self, inputs: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         query = str(inputs.get("query", "")).strip()

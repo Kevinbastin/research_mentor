@@ -145,3 +145,15 @@ def test_web_search_fallbacks_to_openrouter(monkeypatch) -> None:  # type: ignor
     assert result["metadata"]["provider"] == "openrouter-web"
     assert "OpenRouter" in result["note"]
     assert "citations" in result and result["citations"]["count"] == 1
+
+
+def test_web_search_reports_available_with_openrouter(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from academic_research_mentor.tools.web_search.tool import WebSearchTool
+
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+
+    tool = WebSearchTool()
+    tool.initialize()
+
+    assert tool.is_available() is True

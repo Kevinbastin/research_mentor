@@ -11,8 +11,7 @@ try:  # pragma: no cover - optional dependency guard
     import httpx  # type: ignore
 except Exception:  # pragma: no cover - optional dependency guard
     httpx = None  # type: ignore
-
-
+HTTPX_AVAILABLE = httpx is not None
 def execute_tavily_search(
     client: Any,
     *,
@@ -70,8 +69,15 @@ def execute_openrouter_search(
     if httpx is None:
         return None, "httpx unavailable for OpenRouter"
 
-    max_results = max(1, min(limit, 6))
-    model = config.get("openrouter_model") or "openrouter/auto:online"
+    max_results = max(1, min(int(config.get("openrouter_max_results", limit)), 6))
+    raw_model = str(config.get("openrouter_model") or "").strip()
+    if raw_model:
+        if ":online" not in raw_model and not config.get("openrouter_disable_online_suffix"):
+            model = f"{raw_model}:online"
+        else:
+            model = raw_model
+    else:
+        model = "openrouter/auto:online"
     system_message = (
         "You are a web search aggregation assistant. Return STRICT JSON with keys 'results' and optional 'summary'. "
         "Each item in 'results' must have 'title', 'url', and 'snippet'. Do not include markdown fences or additional commentary."
@@ -80,16 +86,23 @@ def execute_openrouter_search(
     if domain:
         user_payload["requested_domain"] = domain
 
-    plugins = [{"name": "web", "arguments": {"max_results": max_results}}]
-    body = {
+    plugins: List[Dict[str, Any]] = []
+    if not config.get("openrouter_disable_web_plugin"):
+        plugin_entry: Dict[str, Any] = {"id": "web", "max_results": max_results}
+        search_prompt = config.get("openrouter_search_prompt")
+        if search_prompt:
+            plugin_entry["search_prompt"] = str(search_prompt)
+        plugins.append(plugin_entry)
+    body: Dict[str, Any] = {
         "model": model,
         "messages": [
             {"role": "system", "content": system_message},
             {"role": "user", "content": json.dumps(user_payload)},
         ],
-        "plugins": plugins,
         "temperature": 0,
     }
+    if plugins:
+        body["plugins"] = plugins
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -226,13 +239,10 @@ def _format_results(
             "domain": domain,
         },
     }
-
     if search_depth:
         output["metadata"]["search_depth"] = search_depth
-
     if summary:
         output["summary"] = str(summary).strip()
-
     if citations:
         output["citations"] = formatter.to_output_block(citations)
 
