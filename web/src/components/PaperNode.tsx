@@ -28,7 +28,13 @@ const PaperNode = ({ data, isConnectable }: NodeProps<PaperNodeData>) => {
       />
 
       {/* Header - Title & Meta */}
-      <div className="border-b border-stone-800 bg-[#242426] p-4">
+      <div className="border-b border-stone-800 bg-[#242426] p-4 relative">
+        {/* Window Controls */}
+         <div className="absolute right-3 top-3 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="h-2.5 w-2.5 rounded-full bg-stone-700 hover:bg-yellow-600/80 transition-colors cursor-pointer" />
+            <div className="h-2.5 w-2.5 rounded-full bg-stone-700 hover:bg-red-600/80 transition-colors cursor-pointer" />
+        </div>
+
         <div className="mb-2 flex items-start justify-between gap-2">
             <div className="rounded bg-stone-800 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-stone-400">
               PDF

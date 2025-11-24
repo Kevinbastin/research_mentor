@@ -56,6 +56,13 @@ const ChatNode = ({ data, isConnectable }: NodeProps<ChatNodeData>) => {
 
       {/* User Prompt Section - Header */}
       <div className="flex gap-3 border-b border-white/5 bg-slate-900/50 p-4">
+        {/* Window Controls */}
+        <div className="absolute right-3 top-3 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="h-2.5 w-2.5 rounded-full bg-slate-700 hover:bg-yellow-500/80 transition-colors cursor-pointer" />
+            <div className="h-2.5 w-2.5 rounded-full bg-slate-700 hover:bg-green-500/80 transition-colors cursor-pointer" />
+            <div className="h-2.5 w-2.5 rounded-full bg-slate-700 hover:bg-red-500/80 transition-colors cursor-pointer" />
+        </div>
+
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-800/80 text-slate-400 ring-1 ring-white/5">
           <MessageSquare size={14} />
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   Background,
@@ -8,6 +8,8 @@ import {
   MiniMap,
   BackgroundVariant,
   NodeTypes,
+  ReactFlowProvider,
+  useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -16,22 +18,60 @@ import ChatNode from './ChatNode';
 import PaperNode from './PaperNode';
 import { TheDock } from './TheDock';
 
-const ResearchCanvas = () => {
+const CanvasContent = () => {
   const {
     nodes,
     edges,
     onNodesChange,
     onEdgesChange,
     onConnect,
+    addNode
   } = useResearchStore();
+
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const { screenToFlowPosition } = useReactFlow();
 
   const nodeTypes = useMemo<NodeTypes>(() => ({
     chat: ChatNode,
     paper: PaperNode,
   }), []);
 
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+
+      const type = event.dataTransfer.getData('application/reactflow');
+      const dataString = event.dataTransfer.getData('application/json');
+
+      if (typeof type === 'undefined' || !type) {
+        return;
+      }
+
+      const data = JSON.parse(dataString);
+      const position = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+
+      const newNode = {
+        id: Math.random().toString(36).substring(7),
+        type,
+        position,
+        data: type === 'paper' ? data : { ...data, prompt: data.prompt, response: data.response },
+      };
+
+      addNode(newNode);
+    },
+    [screenToFlowPosition, addNode],
+  );
+
   return (
-    <div className="h-screen w-screen bg-slate-950 text-white">
+    <div className="h-full w-full bg-slate-950 text-white" ref={reactFlowWrapper}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -39,6 +79,8 @@ const ResearchCanvas = () => {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         nodeTypes={nodeTypes}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
         fitView
         className="bg-slate-950"
         minZoom={0.1}
@@ -57,5 +99,13 @@ const ResearchCanvas = () => {
     </div>
   );
 };
+
+const ResearchCanvas = () => {
+    return (
+        <ReactFlowProvider>
+            <CanvasContent />
+        </ReactFlowProvider>
+    );
+}
 
 export default ResearchCanvas;
