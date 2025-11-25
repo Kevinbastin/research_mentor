@@ -4,6 +4,7 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import { Sidebar } from "@/components/Sidebar";
 import { Notebook } from "@/components/Notebook";
+import { MentorChat } from "@/components/MentorChat";
 import { PenTool, Layout, Sparkles } from "lucide-react";
 
 // Dynamically import Tldraw with SSR disabled to prevent duplicate instance errors
@@ -14,6 +15,7 @@ const Whiteboard = dynamic(() => import("@/components/Whiteboard").then(mod => m
 
 export default function Home() {
   const [view, setView] = useState<'notebook' | 'whiteboard'>('notebook');
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-stone-50">
@@ -40,9 +42,16 @@ export default function Home() {
              </div>
 
              <div className="flex items-center gap-2">
-                <button className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-stone-900 text-white text-sm font-medium hover:bg-stone-800 transition-colors shadow-sm">
+                <button 
+                    onClick={() => setIsChatOpen(!isChatOpen)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all shadow-sm border ${
+                        isChatOpen 
+                        ? 'bg-stone-100 border-stone-200 text-stone-800' 
+                        : 'bg-stone-900 border-transparent text-white hover:bg-stone-800'
+                    }`}
+                >
                     <Sparkles size={14} className="text-yellow-400" />
-                    Ask Mentor
+                    {isChatOpen ? 'Close Mentor' : 'Ask Mentor'}
                 </button>
              </div>
           </div>
@@ -58,6 +67,9 @@ export default function Home() {
                      <Whiteboard />
                  </div>
              )}
+             
+             {/* Floating Mentor Chat Overlay */}
+             <MentorChat isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
           </div>
        </div>
     </main>
