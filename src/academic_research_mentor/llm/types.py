@@ -119,3 +119,7 @@ class StreamChunk:
     reasoning: Optional[str] = None
     tool_calls: Optional[list[ToolCall]] = None
     finish_reason: Optional[str] = None
+    # Tool execution status (for streaming with tools)
+    tool_status: Optional[str] = None  # "calling", "executing", "completed"
+    tool_name: Optional[str] = None
+    tool_result: Optional[str] = None

@@ -236,9 +236,14 @@ async def chat_stream(request: ChatRequest):
                 context=context if context else None,
                 include_reasoning=True
             ):
+                # Handle tool status events
+                if chunk.tool_status:
+                    yield f"data: {json.dumps({'type': 'tool', 'status': chunk.tool_status, 'name': chunk.tool_name, 'result': chunk.tool_result})}\n\n"
+                # Handle reasoning
                 if chunk.reasoning:
                     yield f"data: {json.dumps({'type': 'reasoning', 'content': chunk.reasoning})}\n\n"
-                if chunk.content:
+                # Handle content
+                if chunk.content and not chunk.tool_status:  # Don't emit content for tool status messages
                     yield f"data: {json.dumps({'type': 'content', 'content': chunk.content})}\n\n"
             
             yield f"data: {json.dumps({'type': 'done'})}\n\n"

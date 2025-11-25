@@ -111,10 +111,10 @@ class MentorAgent:
         context: Optional[str] = None,
         include_reasoning: bool = True
     ) -> AsyncIterator[StreamChunk]:
-        """Stream a response asynchronously.
+        """Stream a response asynchronously with tool support.
         
-        Note: Tool calling is not supported in streaming mode.
-        For tool-using conversations, use chat_async() first, then stream follow-ups.
+        If tools are needed, executes them first (emitting status chunks),
+        then streams the final response.
         """
         if context:
             full_message = f"Context:\n{context}\n\nUser message: {user_message}"
@@ -122,7 +122,47 @@ class MentorAgent:
             full_message = user_message
             
         messages = self._get_messages(full_message)
+        tool_definitions = self.tools.get_definitions() if len(self.tools) > 0 else None
         
+        # Tool calling loop (non-streaming to detect tool calls)
+        for iteration in range(self.MAX_TOOL_ITERATIONS):
+            # Check if we need to call tools first
+            if tool_definitions and iteration == 0:
+                # Make a non-streaming call to check for tool calls
+                response, tool_calls = await self.client.chat_async(messages, tools=tool_definitions)
+                
+                if tool_calls:
+                    # Emit tool status chunks
+                    for tc in tool_calls:
+                        yield StreamChunk(
+                            tool_status="calling",
+                            tool_name=tc.name,
+                            content=f"Calling tool: {tc.name}"
+                        )
+                    
+                    # Execute tools
+                    messages.append(response)
+                    for tc in tool_calls:
+                        yield StreamChunk(
+                            tool_status="executing",
+                            tool_name=tc.name
+                        )
+                        result = self.tools.execute(tc.name, **tc.arguments)
+                        result.tool_call_id = tc.id
+                        messages.append(result.to_message())
+                        yield StreamChunk(
+                            tool_status="completed",
+                            tool_name=tc.name,
+                            tool_result=result.content[:500] + "..." if len(result.content) > 500 else result.content
+                        )
+                    
+                    # Continue loop to get final response (or more tool calls)
+                    continue
+            
+            # Stream the final response (no more tool calls needed)
+            break
+        
+        # Now stream the final response
         full_content = ""
         full_reasoning = ""
         
