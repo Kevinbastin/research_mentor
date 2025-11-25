@@ -8,8 +8,6 @@ import {
   User,
   ChevronRight,
   ChevronDown,
-  ChevronUp,
-  PanelRightClose,
   PanelRightOpen,
   SidebarClose,
   Maximize2,
@@ -50,35 +48,10 @@ const ThinkingBlock = ({ content, defaultExpanded = false }: { content: string; 
 };
 
 const CollapsibleMessage = ({ content }: { content: string }) => {
-  const [expanded, setExpanded] = useState(false);
-  const isLong = content && content.length > 900;
-
+  // Don't use collapsible behavior - let content flow naturally and parent scroll handle it
   return (
     <div className="text-[15px] leading-relaxed text-stone-900">
-      <div className={`relative ${expanded ? '' : 'max-h-64 overflow-hidden'}`}>
-        <MarkdownRenderer content={content} />
-        {!expanded && isLong && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white via-white/85 to-transparent" />
-        )}
-      </div>
-      {isLong && (
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="mt-2 inline-flex items-center gap-1 rounded-full bg-stone-100 px-3 py-1 text-[11px] font-semibold text-stone-600 hover:bg-stone-200 transition-colors"
-        >
-          {expanded ? (
-            <>
-              <ChevronUp size={12} />
-              Collapse
-            </>
-          ) : (
-            <>
-              <ChevronDown size={12} />
-              Show full reply
-            </>
-          )}
-        </button>
-      )}
+      <MarkdownRenderer content={content} />
     </div>
   );
 };
