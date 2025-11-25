@@ -1,10 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { Sidebar } from "@/components/Sidebar";
 import { Notebook } from "@/components/Notebook";
-import { Whiteboard } from "@/components/Whiteboard";
 import { PenTool, Layout, Sparkles } from "lucide-react";
+
+// Dynamically import Tldraw with SSR disabled to prevent duplicate instance errors
+const Whiteboard = dynamic(() => import("@/components/Whiteboard").then(mod => mod.Whiteboard), { 
+  ssr: false,
+  loading: () => <div className="flex h-full w-full items-center justify-center text-stone-400">Loading Canvas...</div>
+});
 
 export default function Home() {
   const [view, setView] = useState<'notebook' | 'whiteboard'>('notebook');
