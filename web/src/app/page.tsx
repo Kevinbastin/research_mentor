@@ -68,9 +68,11 @@ export default function Home() {
          </button>
        </div>
 
-       {/* Floating Dock (Desktop & Mobile) */}
-       <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 animate-slide-up">
-          <ToolbarContent />
+       {/* Floating Dock (Desktop & Mobile) - Moved to Top Center to avoid obstruction */}
+       <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+          <div className="animate-slide-down pointer-events-auto">
+             <ToolbarContent />
+          </div>
        </div>
 
        {/* Mobile Content Area */}
