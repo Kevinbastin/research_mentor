@@ -78,7 +78,7 @@ export default function Home() {
        {/* Mobile Content Area */}
        <div className="md:hidden flex-1 relative overflow-hidden h-full pt-safe">
           {view === 'notebook' ? (
-              <div className="h-full overflow-y-auto scrollbar-hide pt-12 pb-24">
+              <div className="h-full overflow-y-auto scrollbar-hide pt-28 pb-24">
                   <Notebook />
               </div>
           ) : (
@@ -119,7 +119,7 @@ export default function Home() {
                   {/* View Content */}
                   <div className="flex-1 relative overflow-hidden">
                       {view === 'notebook' ? (
-                          <div className="h-full overflow-y-auto scrollbar-hide p-8 pb-24 max-w-3xl mx-auto">
+                          <div className="h-full overflow-y-auto scrollbar-hide p-8 pt-28 pb-24 max-w-3xl mx-auto">
                               <Notebook />
                           </div>
                       ) : (

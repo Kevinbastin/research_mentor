@@ -165,9 +165,9 @@ export const Sidebar = ({
       {!isMobile && (
         <button 
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute -right-5 top-6 z-50 flex h-9 w-9 items-center justify-center rounded-full border-2 border-stone-200 bg-white text-stone-500 shadow-xl hover:border-stone-300 hover:text-stone-700 hover:scale-110 transition-all duration-200"
+          className="absolute -right-4 top-6 z-50 flex h-8 w-8 items-center justify-center rounded-full border border-stone-300 bg-white text-stone-600 shadow-md hover:border-stone-400 hover:text-stone-900 hover:scale-110 transition-all duration-200"
         >
-          {isCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          {isCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
         </button>
       )}
 
