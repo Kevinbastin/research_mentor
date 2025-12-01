@@ -1,10 +1,16 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Bold, Italic, List, ListOrdered, Quote, Heading1, Heading2 } from 'lucide-react';
+import Image from '@tiptap/extension-image';
+import { 
+  ChevronLeft, ChevronRight, Bold, Italic, List, ListOrdered, Quote, Heading1, Heading2, Image as ImageIcon, Download, Save 
+} from 'lucide-react';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { saveAs } from 'file-saver';
+import { tiptapJsonToHtml, tiptapJsonToMarkdown } from '@/lib/export';
+import { useNotebookStore } from '@/store/useNotebookStore';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -34,10 +40,15 @@ const ToolbarButton = ({
 
 export const Notebook = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [pageHeight, setPageHeight] = useState(900);
   const [currentPage, setCurrentPage] = useState(1);
   const [maxPage, setMaxPage] = useState(1);
-   const [mode, setMode] = useState<'paged' | 'continuous'>('paged');
+  const [mode, setMode] = useState<'paged' | 'continuous'>('paged');
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const { content: storedContent, setContent, saveNote, lastUpdatedAt } = useNotebookStore();
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const computePageHeight = () => {
@@ -59,11 +70,16 @@ export const Notebook = () => {
     immediatelyRender: false,
     extensions: [
       StarterKit,
+      Image.configure({
+        HTMLAttributes: {
+          class: 'my-4 rounded shadow-sm max-w-full mx-auto',
+        },
+      }),
       Placeholder.configure({
         placeholder: 'Start writing your research paper... (Option+Enter for AI)',
       }),
     ],
-    content: `
+    content: storedContent ?? `
       <h1>Research Proposal</h1>
       <p>Start by outlining your hypothesis here.</p>
     `,
@@ -71,8 +87,99 @@ export const Notebook = () => {
       attributes: {
         class: 'prose prose-stone prose-lg max-w-none focus:outline-none',
       },
+      handlePaste: (_view, event) => {
+        const items = event.clipboardData?.items;
+        if (!items) return false;
+        const imageItem = Array.from(items).find((i) => i.type.startsWith('image/'));
+        if (imageItem) {
+          const file = imageItem.getAsFile();
+          if (file) {
+            insertImageFile(file);
+            return true;
+          }
+        }
+        return false;
+      },
+      handleDrop: (_view, event) => {
+        if (!event.dataTransfer?.files?.length) return false;
+        const file = event.dataTransfer.files[0];
+        if (file.type.startsWith('image/')) {
+          event.preventDefault();
+          insertImageFile(file);
+          return true;
+        }
+        return false;
+      },
+    },
+    onUpdate: ({ editor }) => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      const json = editor.getJSON();
+      saveTimerRef.current = setTimeout(() => {
+        setContent(json);
+      }, 400);
     },
   });
+
+  useEffect(() => {
+    if (editor) {
+      setContent(editor.getJSON());
+    }
+  }, [editor]);
+
+  useEffect(() => {
+    if (editor && storedContent) {
+      editor.commands.setContent(storedContent);
+    }
+  }, [editor, storedContent]);
+
+  const insertImageFile = async (file: File) => {
+    if (!editor) return;
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/upload-image', {
+        method: 'POST',
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        editor.chain().focus().setImage({ src: data.url, alt: file.name }).run();
+        return;
+      }
+    } catch (err) {
+      console.warn('Upload failed, falling back to data URL', err);
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = reader.result as string;
+      editor.chain().focus().setImage({ src, alt: file.name }).run();
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      insertImageFile(file);
+    }
+    e.target.value = '';
+  };
+
+  const exportAsDocx = () => {
+    if (!editor) return;
+    const html = tiptapJsonToHtml(editor.getJSON());
+    const content = `<!DOCTYPE html><html><head><meta charset="utf-8" /></head><body>${html}</body></html>`;
+    const blob = new Blob([content], { type: 'application/msword' });
+    saveAs(blob, 'notes.doc');
+  };
+
+  const exportAsMarkdown = () => {
+    if (!editor) return;
+    const md = tiptapJsonToMarkdown(editor.getJSON());
+    const blob = new Blob([md], { type: 'text/markdown' });
+    saveAs(blob, 'notes.md');
+  };
 
   const handleScroll = () => {
     const el = scrollRef.current;
@@ -182,6 +289,61 @@ export const Notebook = () => {
                 >
                   <Quote size={16} />
                 </ToolbarButton>
+
+                <div className="w-[1px] h-4 bg-stone-200 mx-1" />
+
+                <ToolbarButton 
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <ImageIcon size={16} />
+                </ToolbarButton>
+
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  className="hidden" 
+                  ref={fileInputRef}
+                  onChange={handleImagePick}
+                />
+
+                <div className="w-[1px] h-4 bg-stone-200 mx-1" />
+
+                <div className="relative">
+                  <ToolbarButton onClick={() => setShowExportMenu(!showExportMenu)}>
+                    <Download size={16} />
+                  </ToolbarButton>
+                  {showExportMenu && (
+                    <div className="absolute right-0 mt-2 w-48 rounded-lg border border-stone-200 bg-white shadow-lg z-50 overflow-hidden">
+                      <button 
+                        onClick={() => { setShowExportMenu(false); exportAsDocx(); }}
+                        className="w-full px-3 py-2 text-left text-xs font-mono hover:bg-stone-50"
+                      >
+                        Export as DOCX
+                      </button>
+                      <button 
+                        onClick={() => { setShowExportMenu(false); exportAsMarkdown(); }}
+                        className="w-full px-3 py-2 text-left text-xs font-mono hover:bg-stone-50"
+                      >
+                        Export as Markdown
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button 
+                  onClick={() => saveNote()}
+                  className="ml-2 px-3 py-1.5 rounded-full bg-amber-100 text-amber-900 border border-amber-200 text-[11px] font-mono hover:bg-amber-200/70 transition-all flex items-center gap-1"
+                  title="Save to Notes"
+                >
+                  <Save size={12} />
+                  Save
+                </button>
+
+                {lastUpdatedAt && (
+                  <span className="ml-2 text-[10px] text-stone-400 font-mono">
+                    Saved {new Date(lastUpdatedAt).toLocaleTimeString()}
+                  </span>
+                )}
 
               </div>
             </div>

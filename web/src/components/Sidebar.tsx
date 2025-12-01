@@ -4,6 +4,7 @@ import {
   Upload, File, Trash2, CheckSquare, Square, Loader2, AlertCircle, Brain, X
 } from 'lucide-react';
 import { useDocumentStore, UploadedDocument } from '@/store/useDocumentStore';
+import { useNotebookStore } from '@/store/useNotebookStore';
 
 const ACCEPTED_TYPES = {
   'application/pdf': 'pdf',
@@ -38,6 +39,7 @@ export const Sidebar = ({
     clearSelection,
     setUploading
   } = useDocumentStore();
+  const { notes, loadNote, deleteNote, content } = useNotebookStore();
 
   useEffect(() => {
     let mounted = true;
@@ -264,7 +266,7 @@ export const Sidebar = ({
             )}
 
             {/* Document list */}
-            <div className="space-y-1">
+            <div className="space-y-1 pb-12">
               {documents.map(doc => (
                 <DocumentItem 
                   key={doc.id}
@@ -276,34 +278,72 @@ export const Sidebar = ({
                   formatFileSize={formatFileSize}
                 />
               ))}
+              
+              {/* Persistent "Add Source" Button */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full mt-2 flex items-center justify-center gap-2 px-3 py-2.5 border border-dashed border-stone-300 rounded-lg text-stone-500 hover:text-stone-800 hover:border-stone-400 hover:bg-white transition-all group"
+              >
+                <Plus size={14} className="text-stone-400 group-hover:text-stone-600" />
+                <span className="text-xs font-mono font-medium">Add Source</span>
+              </button>
             </div>
 
-            {/* Empty state / Drop zone */}
-            {documents.length === 0 && (
+            {/* Drag Overlay (Global for sidebar) */}
+            {isDragOver && (
               <div 
-                className={`
-                  mt-4 p-6 border-2 border-dashed rounded-xl text-center cursor-pointer
-                  transition-all duration-200
-                  ${isDragOver 
-                    ? 'border-blue-400 bg-blue-50 scale-[1.02]' 
-                    : 'border-stone-200 hover:border-stone-300 hover:bg-stone-50'
-                  }
-                `}
-                onClick={() => fileInputRef.current?.click()}
+                className="absolute inset-0 z-50 bg-blue-50/95 backdrop-blur-sm flex flex-col items-center justify-center border-2 border-blue-400 m-2 rounded-xl animate-fade-in"
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
               >
-                <Upload className={`w-8 h-8 mx-auto mb-3 transition-colors ${isDragOver ? 'text-blue-500' : 'text-stone-400'}`} />
-                <p className="text-sm text-stone-600 font-medium">
-                  Drop files here
-                </p>
-                <p className="text-xs text-stone-400 mt-1">
-                  or click to browse
-                </p>
+                <Upload className="w-10 h-10 text-blue-500 mb-3 animate-bounce" />
+                <p className="text-sm font-bold text-blue-700">Drop to Import</p>
+                <p className="text-xs text-blue-500 mt-1">PDF, DOCX, TXT, MD</p>
               </div>
             )}
           </>
         ) : (
-          <div className="p-8 text-center text-sm text-stone-400 italic">
-            "Notes feature coming soon..."
+          <div className="space-y-2 pb-16">
+            {notes.length === 0 ? (
+              <div className="p-8 text-center text-sm text-stone-400 italic">
+                No saved notes yet. Use "Save" in the notebook to stash drafts here.
+              </div>
+            ) : (
+              notes.map(note => (
+                <div 
+                  key={note.id}
+                  className="group border border-stone-200 rounded-lg bg-white p-3 shadow-sm hover:shadow-md transition-all"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-mono font-semibold text-stone-800 line-clamp-1">
+                        {note.title || 'Untitled'}
+                      </div>
+                      <div className="text-[10px] text-stone-400 font-mono">
+                        {new Date(note.updatedAt).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button 
+                        onClick={() => {
+                          if (content && !window.confirm('Loading will replace current draft. Continue?')) return;
+                          loadNote(note.id);
+                        }}
+                        className="px-2 py-1 text-[11px] font-mono bg-stone-900 text-white rounded hover:bg-stone-800 transition-all"
+                      >
+                        Load
+                      </button>
+                      <button 
+                        onClick={() => deleteNote(note.id)}
+                        className="p-1 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>

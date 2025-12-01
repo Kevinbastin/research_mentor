@@ -30,6 +30,8 @@ import {
   Italic,
   List,
   MoreVertical,
+  Globe,
+  BookOpen,
 } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { useChatStore, ChatAttachment, ToolCall } from '@/store/useChatStore';
@@ -138,6 +140,10 @@ const ToolCallBlock = ({ toolCall }: { toolCall: ToolCall }) => {
     if (hasResult) setIsExpanded(!isExpanded);
   };
 
+  const kind = toolCall.name.toLowerCase().includes('web') ? 'web' : toolCall.name.toLowerCase().includes('arxiv') ? 'arxiv' : 'default';
+
+  const parsed = parseStructuredResult(toolCall.result);
+
   return (
     <div className={cn(
       "mb-2 rounded-md border overflow-hidden transition-all duration-300",
@@ -167,10 +173,92 @@ const ToolCallBlock = ({ toolCall }: { toolCall: ToolCall }) => {
         </div>
       </button>
       {isExpanded && hasResult && (
-        <div className="p-3 text-xs font-mono bg-white/50 border-t border-inherit border-opacity-30 overflow-x-auto whitespace-pre-wrap text-stone-700">
-          {toolCall.result}
+        <div className="p-3 bg-white/60 border-t border-inherit border-opacity-30">
+          {(kind === 'web' || kind === 'arxiv') && parsed?.items ? (
+            <SearchResults items={parsed.items} kind={kind} />
+          ) : (
+            <pre className="text-xs font-mono whitespace-pre-wrap text-stone-700">{toolCall.result}</pre>
+          )}
         </div>
       )}
+    </div>
+  );
+};
+
+type ParsedSearchResult = {
+  title?: string;
+  url?: string;
+  summary?: string;
+  snippet?: string;
+};
+
+function parseStructuredResult(raw?: string): { items?: ParsedSearchResult[] } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return { items: parsed };
+    }
+    if (parsed?.results && Array.isArray(parsed.results)) {
+      return { items: parsed.results };
+    }
+  } catch (e) {
+    return null;
+  }
+  return null;
+}
+
+const okabeIto = {
+  arxiv: {
+    accent: "#E69F00",
+    badge: "bg-[#E69F00]/10 text-[#E69F00]",
+    border: "border-[#E69F00]/60",
+  },
+  web: {
+    accent: "#56B4E9",
+    badge: "bg-[#56B4E9]/10 text-[#56B4E9]",
+    border: "border-[#56B4E9]/60",
+  },
+};
+
+const SearchResults = ({ items, kind }: { items: ParsedSearchResult[]; kind: 'web' | 'arxiv' }) => {
+  const palette = okabeIto[kind];
+  const Icon = kind === 'web' ? Globe : BookOpen;
+  return (
+    <div className="space-y-2">
+      {items.map((item, idx) => (
+        <div
+          key={idx}
+          className={cn(
+            "rounded-lg border bg-white p-3 shadow-sm", 
+            palette.border
+          )}
+        >
+          <div className="flex items-start gap-2">
+            <div className={cn("p-1.5 rounded-md", palette.badge)}>
+              <Icon size={14} />
+            </div>
+            <div className="min-w-0 space-y-1">
+              {item.title && (
+                <div className="text-sm font-semibold text-stone-800 line-clamp-2">{item.title}</div>
+              )}
+              {(item.summary || item.snippet) && (
+                <div className="text-xs text-stone-600 line-clamp-3">{item.summary || item.snippet}</div>
+              )}
+              {item.url && (
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] font-mono text-blue-600 hover:underline break-all"
+                >
+                  {item.url}
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 };
@@ -180,23 +268,26 @@ const ThinkingBlock = ({ content, defaultExpanded = false }: { content: string; 
   if (!content) return null;
 
   return (
-    <div className="mb-4 rounded-md overflow-hidden border border-stone-800 bg-[#1C1917] shadow-sm">
+    <div className="mb-4 rounded-md overflow-hidden border border-stone-200/60 bg-stone-50/50 shadow-sm group/trace">
       <button 
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 bg-[#292524] hover:bg-[#44403C] transition-colors group"
+        className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-stone-100/50 transition-colors group"
       >
-        <Terminal size={12} className="text-amber-500/70 group-hover:text-amber-400 transition-colors" />
-        <span className="text-[10px] font-mono text-stone-400 uppercase tracking-wider font-medium">
+        <div className="relative">
+           <Terminal size={12} className="text-stone-400 group-hover:text-stone-600 transition-colors" />
+           {!isExpanded && <span className="absolute top-0 right-0 w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />}
+        </div>
+        <span className="text-[10px] font-mono text-stone-500 uppercase tracking-wider font-medium">
           System_Trace
         </span>
         <div className="ml-auto flex items-center gap-2">
-           <span className="text-[10px] text-stone-600 font-mono group-hover:text-stone-500 transition-colors">
-             {isExpanded ? 'HIDE' : 'SHOW'}
+           <span className="text-[10px] text-stone-400 group-hover:text-stone-500 font-mono opacity-0 group-hover/trace:opacity-100 transition-all">
+             {isExpanded ? 'HIDE' : 'VIEW LOGS'}
            </span>
         </div>
       </button>
       {isExpanded && (
-        <div className="p-3 text-xs font-mono text-[#A8A29E] overflow-x-auto leading-relaxed border-t border-stone-800/50 max-h-[300px] overflow-y-auto custom-scrollbar">
+        <div className="p-3 text-xs font-mono text-[#A8A29E] bg-[#1C1917] overflow-x-auto leading-relaxed border-t border-stone-200 max-h-[300px] overflow-y-auto custom-scrollbar animate-slide-down">
           {content}
         </div>
       )}
