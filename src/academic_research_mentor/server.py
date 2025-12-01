@@ -15,7 +15,7 @@ from supermemory import Supermemory
 
 from academic_research_mentor.agent import MentorAgent, ToolRegistry, create_default_tools
 from academic_research_mentor.llm import create_client
-from academic_research_mentor.llm.types import StreamChunk
+from academic_research_mentor.llm.types import StreamChunk, Message, Role
 
 app = FastAPI(title="Academic Research Mentor API")
 
@@ -39,6 +39,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     prompt: str
     document_context: Optional[str] = None
+    content_parts: Optional[list] = None  # structured content for vision (text + image_url parts)
 
 class ChatResponse(BaseModel):
     response: str
@@ -49,6 +50,12 @@ class UploadResponse(BaseModel):
     filename: str
     content: str
     pages: Optional[int] = None
+
+class TitleRequest(BaseModel):
+    text: str
+
+class TitleResponse(BaseModel):
+    title: str
 
 class MemorySearchRequest(BaseModel):
     query: str
@@ -111,6 +118,47 @@ def search_supermemory(query: str, limit: int = 5) -> list[dict]:
     except Exception as e:
         print(f"Supermemory search failed: {e}")
         return []
+
+
+def _clean_title(raw: str) -> str:
+    """Normalize model-produced titles."""
+    cleaned = raw.strip().strip('"').strip("'")
+    cleaned = cleaned.replace("\n", " ").strip()
+    # Collapse multiple spaces
+    cleaned = " ".join(cleaned.split())
+    # Trim to 60 chars to fit UI
+    if len(cleaned) > 60:
+        cleaned = cleaned[:60].rstrip() + "…"
+    return cleaned or ""
+
+
+async def generate_title_from_text(text: str) -> str:
+    """Use the mentor agent's client to generate a short semantic title."""
+    prompt = (
+        "Generate a concise, descriptive chat title (5-8 words). "
+        "No quotes, no prefix, no markdown, just the title text. "
+        f"User message:\n{text}"
+    )
+    try:
+        if mentor_agent and mentor_agent.client:
+            messages = [
+                Message.system("You create short, descriptive chat titles. Reply with title only."),
+                Message.user(prompt)
+            ]
+            resp_msg, _ = await mentor_agent.client.chat_async(
+                messages,
+                max_tokens=16,
+                temperature=0.3,
+            )
+            if isinstance(resp_msg.content, str):
+                title = _clean_title(resp_msg.content)
+                if title:
+                    return title
+    except Exception as e:
+        print(f"Title generation failed: {e}")
+    # Fallback: heuristic clip
+    fallback = text.strip()
+    return (fallback[:60] + ("…" if len(fallback) > 60 else "")) or "Untitled chat"
 
 
 # --- API Endpoints ---
@@ -210,7 +258,8 @@ async def chat(request: ChatRequest):
         context = f"{context}\n\n{memory_ctx}" if context else memory_ctx
     
     try:
-        response = await mentor_agent.chat_async(request.prompt, context=context if context else None)
+        user_payload = request.content_parts if request.content_parts else request.prompt
+        response = await mentor_agent.chat_async(user_payload, context=context if context else None)
         return ChatResponse(response=response)
     except Exception as e:
         raise HTTPException(500, str(e))
@@ -231,8 +280,9 @@ async def chat_stream(request: ChatRequest):
             context = f"{context}\n\n{memory_ctx}" if context else memory_ctx
         
         try:
+            user_payload = request.content_parts if request.content_parts else request.prompt
             async for chunk in mentor_agent.stream_async(
-                request.prompt,
+                user_payload,
                 context=context if context else None,
                 include_reasoning=True
             ):
@@ -324,6 +374,14 @@ async def search_memory(request: MemorySearchRequest):
 @app.get("/api/memory/status")
 async def memory_status():
     return {"connected": supermemory_client is not None, "provider": "supermemory" if supermemory_client else None}
+
+
+@app.post("/api/chat/title", response_model=TitleResponse)
+async def chat_title(req: TitleRequest):
+    if not req.text or not req.text.strip():
+        raise HTTPException(400, "text required")
+    title = await generate_title_from_text(req.text)
+    return TitleResponse(title=title)
 
 
 if __name__ == "__main__":

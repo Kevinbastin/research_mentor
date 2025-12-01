@@ -39,12 +39,15 @@ class LLMClient:
         openai_messages = [m.to_dict() for m in messages]
         openai_tools = [t.to_openai_tool() for t in tools] if tools else None
 
+        max_tokens = kwargs.pop("max_tokens", self.config.max_tokens)
+        temperature = kwargs.pop("temperature", self.config.temperature)
+
         response = self._client.chat.completions.create(
             model=self.config.model,
             messages=openai_messages,
             tools=openai_tools,
-            max_tokens=self.config.max_tokens,
-            temperature=self.config.temperature,
+            max_tokens=max_tokens,
+            temperature=temperature,
             **kwargs
         )
 
@@ -67,12 +70,15 @@ class LLMClient:
         openai_messages = [m.to_dict() for m in messages]
         openai_tools = [t.to_openai_tool() for t in tools] if tools else None
 
+        max_tokens = kwargs.pop("max_tokens", self.config.max_tokens)
+        temperature = kwargs.pop("temperature", self.config.temperature)
+
         response = await self._async_client.chat.completions.create(
             model=self.config.model,
             messages=openai_messages,
             tools=openai_tools,
-            max_tokens=self.config.max_tokens,
-            temperature=self.config.temperature,
+            max_tokens=max_tokens,
+            temperature=temperature,
             **kwargs
         )
 
@@ -98,8 +104,11 @@ class LLMClient:
 
         # Build extra body for OpenRouter reasoning support
         extra_body = kwargs.pop("extra_body", {})
-        if include_reasoning and "openrouter" in (self.config.base_url or ""):
+        if include_reasoning:
+            # OpenRouter / compatible providers use include_reasoning
             extra_body["include_reasoning"] = True
+            # Nudge toward concise but meaningful scratchpad
+            extra_body.setdefault("reasoning", {"effort": "medium", "max_tokens": 256})
 
         stream = await self._async_client.chat.completions.create(
             model=self.config.model,

@@ -1,7 +1,7 @@
 """Type definitions for LLM interactions."""
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union, List, Dict
 from enum import Enum
 
 
@@ -17,7 +17,7 @@ class Role(str, Enum):
 class Message:
     """A chat message."""
     role: Role
-    content: str
+    content: Union[str, List[Any]]
     name: Optional[str] = None  # For tool messages
     tool_call_id: Optional[str] = None  # For tool responses
     tool_calls: Optional[list["ToolCall"]] = None  # For assistant messages with tool calls

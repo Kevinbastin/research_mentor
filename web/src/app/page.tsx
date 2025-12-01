@@ -17,7 +17,7 @@ const Whiteboard = dynamic(() => import("@/components/Whiteboard").then(mod => m
 export default function Home() {
   const [view, setView] = useState<'notebook' | 'whiteboard'>('notebook');
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [chatMode, setChatMode] = useState<'floating' | 'docked'>('floating');
+  const [chatMode, setChatMode] = useState<'floating' | 'docked'>('docked');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   return (
@@ -62,9 +62,16 @@ export default function Home() {
        {/* Desktop Layout */}
        <div className="hidden md:flex h-full w-full">
          {/* Activity Rail - Leftmost vertical strip */}
-         <div className="w-[60px] bg-[#1c1917] flex flex-col items-center py-6 gap-8 z-50 border-r border-stone-800 shrink-0">
-            {/* View Controls (Top) */}
+         <div className="w-[60px] bg-[#1c1917] flex flex-col items-center py-6 gap-6 z-50 border-r border-stone-800 shrink-0">
+            {/* Primary Controls (Top) */}
             <div className="flex flex-col gap-4">
+               <button 
+                 onClick={() => setIsChatOpen(!isChatOpen)}
+                 className={`p-3 rounded-xl transition-all duration-200 ${isChatOpen ? 'bg-stone-800 text-white shadow-md' : 'text-amber-500 hover:text-stone-300 hover:bg-stone-800/50'}`}
+                 title="Ask Mentor"
+               >
+                 <Sparkles size={20} />
+               </button>
                <button 
                  onClick={() => setView('notebook')}
                  className={`p-3 rounded-xl transition-all duration-200 ${view === 'notebook' ? 'bg-stone-800 text-white shadow-md' : 'text-stone-500 hover:text-stone-300 hover:bg-stone-800/50'}`}
@@ -82,17 +89,6 @@ export default function Home() {
             </div>
 
             <div className="flex-1" />
-
-            {/* Tool Controls (Bottom) */}
-            <div className="flex flex-col gap-4 mb-2">
-               <button 
-                 onClick={() => setIsChatOpen(!isChatOpen)}
-                 className={`p-3 rounded-xl transition-all duration-200 ${isChatOpen ? 'bg-stone-800 text-white' : 'text-amber-500 hover:bg-stone-800/50'}`}
-                 title="Mentor"
-               >
-                 <Sparkles size={20} />
-               </button>
-            </div>
          </div>
 
          <ResizablePanelGroup direction="horizontal" className="h-full w-full">
@@ -105,12 +101,12 @@ export default function Home() {
             <ResizableHandle withHandle />
 
             {/* Main Content Panel */}
-            <ResizablePanel defaultSize={isChatOpen && chatMode === 'docked' ? 50 : 80} minSize={30}>
+            <ResizablePanel defaultSize={isChatOpen ? 60 : 80} minSize={30}>
                <div className="flex flex-col h-full relative bg-[#F7F6F3]">
                   {/* View Content */}
                   <div className="flex-1 relative overflow-hidden">
                       {view === 'notebook' ? (
-                          <div className="h-full overflow-y-auto scrollbar-hide p-8 pb-24 max-w-3xl mx-auto">
+                          <div className="h-full overflow-hidden p-6 md:p-10 w-full">
                               <Notebook />
                           </div>
                       ) : (
@@ -123,7 +119,7 @@ export default function Home() {
             </ResizablePanel>
 
             {/* Docked Mentor Panel */}
-            {isChatOpen && chatMode === 'docked' && (
+            {isChatOpen && (
                <>
                   <ResizableHandle withHandle />
                   <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
@@ -131,23 +127,13 @@ export default function Home() {
                           isOpen={true} 
                           onClose={() => setIsChatOpen(false)} 
                           mode="docked"
-                          onToggleMode={() => setChatMode('floating')}
+                          onToggleMode={() => {}}
                       />
                   </ResizablePanel>
                </>
             )}
          </ResizablePanelGroup>
-       </div>
-
-       {/* Floating Mentor Chat (Desktop & Mobile Overlay) */}
-       {isChatOpen && chatMode === 'floating' && (
-           <MentorChat 
-             isOpen={true} 
-             onClose={() => setIsChatOpen(false)} 
-             mode="floating"
-             onToggleMode={() => setChatMode('docked')}
-           />
-       )}
+      </div>
     </main>
   );
 }

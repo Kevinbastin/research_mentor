@@ -6,7 +6,7 @@ import os
 from typing import Any, AsyncIterator, Optional
 
 from academic_research_mentor.llm import LLMClient, create_client, Message, ToolCall
-from academic_research_mentor.llm.types import StreamChunk, ToolResult
+from academic_research_mentor.llm.types import StreamChunk, ToolResult, Role
 from .tools import ToolRegistry
 
 
@@ -28,17 +28,23 @@ class MentorAgent:
         self.max_history = max_history
         self._history: list[Message] = []
 
-    def _get_messages(self, user_message: str) -> list[Message]:
+    def _get_messages(self, user_message: Any, context: Optional[str] = None) -> list[Message]:
         """Build message list with system prompt, history, and user message."""
         messages = [Message.system(self.system_prompt)]
-        
-        # Add bounded history
+
         if self._history:
             history_slice = self._history[-self.max_history:]
             messages.extend(history_slice)
-        
-        # Add current user message
-        messages.append(Message.user(user_message))
+
+        if isinstance(user_message, list):
+            parts = []
+            if context:
+                parts.append({"type": "text", "text": f"Context:\n{context}"})
+            parts.extend(user_message)
+            messages.append(Message(Role.USER, parts))  # type: ignore[arg-type]
+        else:
+            full_message = f"Context:\n{context}\n\nUser message: {user_message}" if context else user_message
+            messages.append(Message.user(full_message))
         return messages
 
     def _execute_tool_calls(self, tool_calls: list[ToolCall]) -> list[Message]:
@@ -52,7 +58,7 @@ class MentorAgent:
         
         return tool_messages
 
-    def chat(self, user_message: str, context: Optional[str] = None) -> str:
+    def chat(self, user_message: Any, context: Optional[str] = None) -> str:
         """Send a message and get a response (with automatic tool calling)."""
         # Build messages
         if context:
@@ -60,7 +66,7 @@ class MentorAgent:
         else:
             full_message = user_message
             
-        messages = self._get_messages(full_message)
+        messages = self._get_messages(user_message, context)
         tool_definitions = self.tools.get_definitions() if len(self.tools) > 0 else None
 
         # Tool calling loop
@@ -81,14 +87,14 @@ class MentorAgent:
         # Max iterations reached
         return "I apologize, but I encountered an issue processing your request. Please try again."
 
-    async def chat_async(self, user_message: str, context: Optional[str] = None) -> str:
+    async def chat_async(self, user_message: Any, context: Optional[str] = None) -> str:
         """Async version of chat."""
         if context:
             full_message = f"Context:\n{context}\n\nUser message: {user_message}"
         else:
             full_message = user_message
             
-        messages = self._get_messages(full_message)
+        messages = self._get_messages(user_message, context)
         tool_definitions = self.tools.get_definitions() if len(self.tools) > 0 else None
 
         for _ in range(self.MAX_TOOL_ITERATIONS):
@@ -107,7 +113,7 @@ class MentorAgent:
 
     async def stream_async(
         self,
-        user_message: str,
+        user_message: Any,
         context: Optional[str] = None,
         include_reasoning: bool = True
     ) -> AsyncIterator[StreamChunk]:
@@ -116,12 +122,7 @@ class MentorAgent:
         If tools are needed, executes them first (emitting status chunks),
         then streams the final response.
         """
-        if context:
-            full_message = f"Context:\n{context}\n\nUser message: {user_message}"
-        else:
-            full_message = user_message
-            
-        messages = self._get_messages(full_message)
+        messages = self._get_messages(user_message, context)
         tool_definitions = self.tools.get_definitions() if len(self.tools) > 0 else None
         
         # Tool calling loop (non-streaming to detect tool calls)

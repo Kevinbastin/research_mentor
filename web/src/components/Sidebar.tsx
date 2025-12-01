@@ -21,6 +21,7 @@ export const Sidebar = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'context' | 'notes'>('context');
   const [isDragOver, setIsDragOver] = useState(false);
+  const [memoryConnected, setMemoryConnected] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Only relevant for mobile drawer mode
   const isMobile = !!onClose;
@@ -37,6 +38,34 @@ export const Sidebar = ({
     clearSelection,
     setUploading
   } = useDocumentStore();
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchMemoryStatus = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/memory/status');
+        if (!res.ok) throw new Error('Failed to fetch memory status');
+        const data = await res.json();
+        if (mounted) {
+          setMemoryConnected(Boolean(data.connected));
+        }
+      } catch (err) {
+        if (mounted) {
+          setMemoryConnected(false);
+        }
+        console.error('Memory status check failed', err);
+      }
+    };
+
+    fetchMemoryStatus();
+    const interval = setInterval(fetchMemoryStatus, 15000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const uploadFile = async (file: File) => {
     const fileType = ACCEPTED_TYPES[file.type as keyof typeof ACCEPTED_TYPES];
