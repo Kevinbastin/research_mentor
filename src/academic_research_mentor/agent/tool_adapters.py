@@ -104,6 +104,12 @@ class ArxivSearchToolAdapter(Tool):
                     "type": "integer",
                     "description": "Maximum number of papers to return (1-20)",
                     "default": 5
+                },
+                "sort_by": {
+                    "type": "string",
+                    "enum": ["relevance", "date"],
+                    "description": "Sort order. Use 'date' to find the absolute latest papers.",
+                    "default": "relevance"
                 }
             },
             "required": ["query"]
@@ -112,11 +118,12 @@ class ArxivSearchToolAdapter(Tool):
     def execute(self, **kwargs: Any) -> str:
         query = kwargs.get("query", "")
         limit = kwargs.get("limit", 5)
+        sort_by = kwargs.get("sort_by", "relevance")
         
         if not query:
             return "Error: No search query provided"
         
-        result = self._tool.execute({"query": query, "limit": limit})
+        result = self._tool.execute({"query": query, "limit": limit, "sort_by": sort_by})
         
         # Format results for the LLM
         papers = result.get("papers", [])
@@ -132,12 +139,16 @@ class ArxivSearchToolAdapter(Tool):
                 authors += " et al."
             url = p.get("url", "")
             year = p.get("year", "")
+            published = p.get("published", "")
             summary = (p.get("summary", "") or "")[:400]
+            
+            # Show full published date if available, otherwise year
+            date_str = f"Published: {published}" if published else f"Year: {year}"
             
             formatted.append(
                 f"{i}. **{title}**\n"
                 f"   Authors: {authors}\n"
-                f"   Year: {year} | URL: {url}\n"
+                f"   {date_str} | URL: {url}\n"
                 f"   {summary}"
             )
         

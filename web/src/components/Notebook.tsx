@@ -2,7 +2,35 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Bold, Italic, List, ListOrdered, Quote, Heading1, Heading2 } from 'lucide-react';
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+const ToolbarButton = ({ 
+  onClick, 
+  isActive, 
+  children 
+}: { 
+  onClick: () => void; 
+  isActive?: boolean; 
+  children: React.ReactNode; 
+}) => (
+  <button
+    onClick={onClick}
+    className={cn(
+      "p-1.5 rounded-full transition-all hover:scale-105 active:scale-95",
+      isActive 
+        ? "bg-stone-100 text-stone-900 shadow-sm" 
+        : "text-stone-400 hover:text-stone-700 hover:bg-stone-50"
+    )}
+  >
+    {children}
+  </button>
+);
 
 export const Notebook = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -97,10 +125,72 @@ export const Notebook = () => {
           {/* Top Accent Line */}
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-300 via-red-300 to-indigo-300 opacity-80" />
 
+          {/* Floating Sticky Pill Toolbar */}
+          {editor && (
+            <div className="sticky top-6 z-20 mx-auto w-fit mb-4 transition-all duration-300 animate-fade-in">
+              <div className="flex items-center gap-1 px-3 py-1.5 bg-white/90 backdrop-blur-md border border-stone-200 rounded-full shadow-[0_4px_20px_-4px_rgba(0,0,0,0.08)]">
+                
+                <ToolbarButton 
+                  isActive={editor.isActive('heading', { level: 1 })} 
+                  onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                >
+                  <Heading1 size={16} />
+                </ToolbarButton>
+
+                <ToolbarButton 
+                  isActive={editor.isActive('heading', { level: 2 })} 
+                  onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                >
+                  <Heading2 size={16} />
+                </ToolbarButton>
+
+                <div className="w-[1px] h-4 bg-stone-200 mx-1" />
+
+                <ToolbarButton 
+                  isActive={editor.isActive('bold')} 
+                  onClick={() => editor.chain().focus().toggleBold().run()}
+                >
+                  <Bold size={16} />
+                </ToolbarButton>
+
+                <ToolbarButton 
+                  isActive={editor.isActive('italic')} 
+                  onClick={() => editor.chain().focus().toggleItalic().run()}
+                >
+                  <Italic size={16} />
+                </ToolbarButton>
+
+                <div className="w-[1px] h-4 bg-stone-200 mx-1" />
+
+                <ToolbarButton 
+                  isActive={editor.isActive('bulletList')} 
+                  onClick={() => editor.chain().focus().toggleBulletList().run()}
+                >
+                  <List size={16} />
+                </ToolbarButton>
+
+                <ToolbarButton 
+                  isActive={editor.isActive('orderedList')} 
+                  onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                >
+                  <ListOrdered size={16} />
+                </ToolbarButton>
+
+                <ToolbarButton 
+                  isActive={editor.isActive('blockquote')} 
+                  onClick={() => editor.chain().focus().toggleBlockquote().run()}
+                >
+                  <Quote size={16} />
+                </ToolbarButton>
+
+              </div>
+            </div>
+          )}
+
           {editor ? (
             <EditorContent 
               editor={editor} 
-              className="flex-1 px-12 pt-12 pb-36 prose prose-stone prose-lg max-w-none focus:outline-none"
+              className="flex-1 px-12 pt-4 pb-36 prose prose-stone prose-lg max-w-none focus:outline-none"
             />
           ) : (
             <div className="flex-1 px-12 pt-12 pb-24 text-sm text-stone-400">

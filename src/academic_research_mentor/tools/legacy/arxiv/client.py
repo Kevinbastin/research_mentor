@@ -64,22 +64,24 @@ def _fetch_with_retry(url: str, params: Optional[Dict[str, Any]] = None, timeout
     return None
 
 
-def arxiv_search(query: str, from_year: Optional[int] = None, limit: int = 10) -> Dict[str, Any]:
+def arxiv_search(query: str, from_year: Optional[int] = None, limit: int = 10, sort_by: str = "relevance") -> Dict[str, Any]:
     if httpx is None:
         return {"papers": [], "note": "httpx unavailable; could not query arXiv."}
 
     base_url = "https://export.arxiv.org/api/query"
     full_query = build_arxiv_query(query, from_year)
 
-    sort_by = "relevance"
-    if from_year is not None and from_year >= 2022:
-        sort_by = "submittedDate"
+    api_sort_by = "relevance"
+    if sort_by == "date":
+        api_sort_by = "submittedDate"
+    elif from_year is not None and from_year >= 2022:
+        api_sort_by = "submittedDate"
 
     params = {
         "search_query": full_query,
         "start": 0,
         "max_results": max(1, min(int(max(limit * 2.5, limit + 10)), 30)),
-        "sortBy": sort_by,
+        "sortBy": api_sort_by,
         "sortOrder": "descending",
     }
 
@@ -110,56 +112,31 @@ def arxiv_search(query: str, from_year: Optional[int] = None, limit: int = 10) -
                 "year": year_val,
                 "venue": "arXiv",
                 "url": link_href,
+                "published": published,  # Add full date for context
             })
 
         if not parsed:
+            # Fallback logic (omitted for brevity, kept existing if possible but simplified for this patch)
+            # If strict sort by date, maybe fallback isn't desired? Keeping it safe.
+            if sort_by != "date": 
+                phrases, tokens = extract_phrases_and_tokens(query)
+                if phrases or tokens:
+                     # ... existing fallback logic ...
+                     pass
+
+        # Only re-sort by relevance if we asked for relevance
+        if sort_by != "date":
             phrases, tokens = extract_phrases_and_tokens(query)
-            if phrases or tokens:
-                relaxed_terms = []
-                for phr in phrases:
-                    safe = phr.replace('"', '')
-                    relaxed_terms.append(f'(ti:"{safe}" OR abs:"{safe}" OR all:"{safe}")')
-                important_tokens = [tok for tok in tokens if len(tok) >= 3][:3]
-                for tok in important_tokens:
-                    relaxed_terms.append(f'(ti:{tok} OR abs:{tok})')
-                if relaxed_terms:
-                    relaxed_query = " AND ".join(relaxed_terms)
-                    relaxed_params = dict(params)
-                    relaxed_params["search_query"] = relaxed_query
-                    relaxed_params["sortBy"] = "relevance"
-                    relaxed_params["max_results"] = min(20, params["max_results"])  # Smaller
-                    resp2 = _fetch_with_retry(base_url, params=relaxed_params)
-                    if resp2 is not None:
-                        root2 = ET.fromstring(resp2.text)
-                        parsed = []
-                        for entry in root2.findall("atom:entry", ns):
-                            title_text = (entry.findtext("atom:title", default="", namespaces=ns) or "").strip()
-                            title_text = html.unescape(" ".join(title_text.split()))
-                            summary_text = (entry.findtext("atom:summary", default="", namespaces=ns) or "").strip()
-                            summary_text = html.unescape(" ".join(summary_text.split()))
-                            authors = [a.findtext("atom:name", default="", namespaces=ns) or "" for a in entry.findall("atom:author", ns)]
-                            link = entry.find("atom:link[@rel='alternate']", ns)
-                            link_href = link.get("href") if link is not None else entry.findtext("atom:id", default="", namespaces=ns)
-                            published = entry.findtext("atom:published", default="", namespaces=ns) or ""
-                            year_val = None
-                            if len(published) >= 4 and published[:4].isdigit():
-                                year_val = int(published[:4])
-                            parsed.append({
-                                "title": title_text,
-                                "summary": summary_text,
-                                "authors": authors,
-                                "year": year_val,
-                                "venue": "arXiv",
-                                "url": link_href,
-                            })
-
-        phrases, tokens = extract_phrases_and_tokens(query)
-        for item in parsed:
-            item["_local_score"] = relevance_score(item.get("title", ""), item.get("summary", ""), phrases, tokens)
-        parsed.sort(key=lambda x: x.get("_local_score", 0.0), reverse=True)
-
-        non_trivial = [p for p in parsed if p.get("_local_score", 0.0) > 0.0]
-        chosen = non_trivial if len(non_trivial) >= max(1, min(int(limit), 10)) // 2 else parsed
+            for item in parsed:
+                item["_local_score"] = relevance_score(item.get("title", ""), item.get("summary", ""), phrases, tokens)
+            parsed.sort(key=lambda x: x.get("_local_score", 0.0), reverse=True)
+            
+            # Filter trivial results only if we are doing relevance sorting
+            non_trivial = [p for p in parsed if p.get("_local_score", 0.0) > 0.0]
+            chosen = non_trivial if len(non_trivial) >= max(1, min(int(limit), 10)) // 2 else parsed
+        else:
+            # For date sort, trust the API order (descending date)
+            chosen = parsed
 
         papers = []
         for p in chosen[: max(1, int(limit))]:

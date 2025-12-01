@@ -20,7 +20,15 @@ class ArxivSearchTool(BaseTool):
         meta["identity"]["owner"] = "legacy"
         meta["capabilities"] = {"task_types": ["literature_search"], "domains": ["cs", "ml"]}
         meta["io"] = {
-            "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "limit": {"type": "number"},
+                    "sort_by": {"type": "string", "enum": ["relevance", "date"], "description": "Sort order (default: relevance)"}
+                },
+                "required": ["query"]
+            },
             "output_schema": {"type": "object", "properties": {"papers": {"type": "array"}}},
         }
         meta["operational"] = {"cost_estimate": "low", "latency_profile": "low", "rate_limits": None}
@@ -31,7 +39,13 @@ class ArxivSearchTool(BaseTool):
         q = str(inputs.get("query", "")).strip()
         if not q:
             return {"papers": [], "note": "empty query"}
-        result = legacy_arxiv_search(query=q, from_year=None, limit=int(inputs.get("limit", 10)))
+        
+        result = legacy_arxiv_search(
+            query=q, 
+            from_year=None, 
+            limit=int(inputs.get("limit", 10)),
+            sort_by=str(inputs.get("sort_by", "relevance"))
+        )
 
         # Build lightweight citations using URL strategy (consistent with guidelines tool)
         papers: List[Dict[str, Any]] = result.get("papers", []) if isinstance(result, dict) else []

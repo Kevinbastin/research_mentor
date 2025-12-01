@@ -18,6 +18,7 @@ GEMINI_FUNCTION_DECLARATIONS: List[Dict[str, Any]] = [
                 "query": {"type": "string", "description": "Search query"},
                 "from_year": {"type": "number", "description": "Minimum publication year"},
                 "limit": {"type": "number", "description": "Max results (≤25)"},
+                "sort_by": {"type": "string", "enum": ["relevance", "date"], "description": "Sort order"},
             },
             "required": ["query"],
         },
@@ -65,6 +66,7 @@ def handle_mentor_function_call(function_name: str, function_args: Dict[str, Any
             query=str(function_args.get("query", "")),
             from_year=function_args.get("from_year"),
             limit=int(function_args.get("limit", 10)),
+            sort_by=str(function_args.get("sort_by", "relevance")),
         )
     if function_name == "math_ground":
         return math_ground(

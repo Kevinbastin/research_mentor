@@ -10,11 +10,19 @@ export type ChatAttachment = {
   uploadedAt: number;
 };
 
+export type ToolCall = {
+  id: string;
+  name: string;
+  status: 'calling' | 'executing' | 'completed' | 'error';
+  result?: string;
+};
+
 export type Message = {
   role: 'user' | 'ai';
   content: string;
   thinking?: string;
   attachments?: ChatAttachment[];
+  toolCalls?: ToolCall[];
 };
 
 export type ChatConversation = {
@@ -31,6 +39,7 @@ type ChatState = {
   isStreaming: boolean;
   streamingContent: string;
   streamingReasoning: string;
+  streamingToolCalls: ToolCall[];
   conversations: ChatConversation[];
   currentConversationId: string | null;
 
@@ -38,6 +47,8 @@ type ChatState = {
   setStreaming: (v: boolean) => void;
   appendContent: (chunk: string) => void;
   appendReasoning: (chunk: string) => void;
+  addToolCall: (toolCall: ToolCall) => void;
+  updateToolCall: (name: string, status: ToolCall['status'], result?: string) => void;
   addUserMessage: (content: string, attachments?: ChatAttachment[]) => void;
   addAiMessage: (content: string, thinking?: string) => void;
   finalizeStream: () => void;
@@ -72,17 +83,29 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
   isStreaming: false,
   streamingContent: "",
   streamingReasoning: "",
+  streamingToolCalls: [],
   conversations: [],
   currentConversationId: null,
 
   setLoading: (v) => set({ isLoading: v }),
   setStreaming: (v) => set({ 
-    isStreaming: v, 
+    isStreaming: v,
     streamingContent: v ? "" : get().streamingContent,
     streamingReasoning: v ? "" : get().streamingReasoning,
+    streamingToolCalls: v ? [] : get().streamingToolCalls,
   }),
   appendContent: (chunk) => set((state) => ({ streamingContent: state.streamingContent + chunk })),
   appendReasoning: (chunk) => set((state) => ({ streamingReasoning: state.streamingReasoning + chunk })),
+  
+  addToolCall: (toolCall) => set((state) => ({
+    streamingToolCalls: [...state.streamingToolCalls, toolCall]
+  })),
+
+  updateToolCall: (name, status, result) => set((state) => ({
+    streamingToolCalls: state.streamingToolCalls.map(tc => 
+      tc.name === name ? { ...tc, status, ...(result ? { result } : {}) } : tc
+    )
+  })),
 
   addUserMessage: (content, attachments = []) => {
     const state = get();
@@ -136,7 +159,7 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
 
   finalizeStream: () => {
     const state = get();
-    if (state.streamingContent.trim() || state.streamingReasoning.trim()) {
+    if (state.streamingContent.trim() || state.streamingReasoning.trim() || state.streamingToolCalls.length > 0) {
       let finalContent = state.streamingContent.trim();
       let finalReasoning = state.streamingReasoning.trim();
       
@@ -153,6 +176,7 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
         role: 'ai',
         content: finalContent || "(No content)",
         thinking: finalReasoning || undefined,
+        toolCalls: state.streamingToolCalls.length > 0 ? state.streamingToolCalls : undefined,
       }];
 
       const convoId = state.currentConversationId ?? `chat-${Date.now()}`;
@@ -169,6 +193,7 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
         messages: updatedMessages,
         streamingContent: "",
         streamingReasoning: "",
+        streamingToolCalls: [],
         isStreaming: false,
         currentConversationId: convoId,
         conversations: upsertConversation(state.conversations, convo),
@@ -183,6 +208,7 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
       isStreaming: false,
       streamingContent: "",
       streamingReasoning: "",
+      streamingToolCalls: [],
       currentConversationId: null,
     });
   },
@@ -193,6 +219,7 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
     isStreaming: false,
     streamingContent: "",
     streamingReasoning: "",
+    streamingToolCalls: [],
     currentConversationId: null,
   }),
 
@@ -206,6 +233,7 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
       isStreaming: false,
       streamingContent: "",
       streamingReasoning: "",
+      streamingToolCalls: [],
     });
   },
 
@@ -222,6 +250,7 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
           isStreaming: false,
           streamingContent: "",
           streamingReasoning: "",
+          streamingToolCalls: [],
         } : {}),
       };
     });

@@ -107,8 +107,8 @@ class LLMClient:
         if include_reasoning:
             # OpenRouter / compatible providers use include_reasoning
             extra_body["include_reasoning"] = True
-            # Nudge toward concise but meaningful scratchpad
-            extra_body.setdefault("reasoning", {"effort": "medium", "max_tokens": 256})
+            # Nudge toward concise but meaningful scratchpad (effort only; max_tokens not allowed together)
+            extra_body.setdefault("reasoning", {"effort": "medium"})
 
         stream = await self._async_client.chat.completions.create(
             model=self.config.model,
