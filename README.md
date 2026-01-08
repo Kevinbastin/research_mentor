@@ -5,7 +5,7 @@ Code and evaluation artifacts for the preprint **“METIS: Mentoring Engine for 
 
 
 ## Abstract
-Many students lack access to expert research mentorship. We ask whether an AI mentor can move undergraduates from an idea to a paper. We build *METIS*, a tool‑augmented, stage‑aware assistant with literature search, curated guidelines, methodology checks, and memory. We evaluate *METIS* against GPT‑5 and Claude Sonnet~4.5 across six writing stages using LLM‑as‑a‑judge pairwise preferences, student‑persona rubrics, short multi‑turn tutoring, and evidence/compliance checks. On 90 single‑turn prompts, LLM judges preferred *METIS* to Claude Sonnet~4.5 in 74.4\% and to GPT‑5 in 58.3\%. Student scores (clarity/actionability/constraint‑fit; 90 prompts $\times$ 3 judges) are higher across stages. In multi‑turn sessions (five scenarios/agent), *METIS* yields slightly higher final quality than GPT‑5. Gains concentrate in document‑grounded stages (D--F), consistent with stage‑aware routing and grounding; failure modes include premature tool routing, shallow grounding, and occasional stage misclassification.
+Many students lack access to expert research mentorship. We ask whether an AI mentor can move undergraduates from an idea to a paper. We build *METIS*, a tool-augmented, stage-aware assistant with literature search, curated guidelines, methodology checks, and memory. We evaluate *METIS* against GPT-5 and Claude Sonnet 4.5 across six writing stages using LLM-as-a-judge pairwise preferences, student-persona rubrics, short multi-turn tutoring, and evidence/compliance checks. On 90 single-turn prompts, LLM judges preferred *METIS* to Claude Sonnet 4.5 in 74.4% and to GPT-5 in 58.3%. Student scores (clarity/actionability/constraint-fit; 90 prompts × 3 judges) are higher across stages. In multi-turn sessions (five scenarios/agent), *METIS* yields slightly higher final quality than GPT-5. Gains concentrate in document-grounded stages (D–F), consistent with stage-aware routing and grounding; failure modes include premature tool routing, shallow grounding, and occasional stage misclassification.
 
 ## System overview
 
@@ -76,14 +76,5 @@ uv run python -m uvicorn academic_research_mentor.server:app --reload --port 800
 cd web && npm run dev
 ```
 
-## Citation
-If you use this code or evaluation setup, please cite the preprint:
-
-```bibtex
-@misc{metis2026,
-  title        = {METIS: Mentoring Engine for Thoughtful Inquiry \& Solutions},
-  author       = {Kumar, Abhinav Rajeev and Trehan, Dhruv and Chopra, Paras},
-  year         = {2026},
-  note         = {Preprint. Repository: https://github.com/lossfunk/ai-research-mentor}
-}
-```
+# Acknowledgement
+We thank Lossfunk for its support throughout this project. This work benefited from access to compute resources provided by Lossfunk, as well as constructive discussions and idea-level guidance that helped shape the direction of this research.
