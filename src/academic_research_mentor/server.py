@@ -203,14 +203,16 @@ async def startup():
         print(f"Tool init warning: {e}")
     
     # Create agent with tools
+    # Provider can be: openrouter, gemini, ollama, openai
     try:
-        client = create_client(provider="openrouter")
+        provider = os.environ.get("LLM_PROVIDER", "gemini")  # default to free Gemini
+        client = create_client(provider=provider)
         mentor_agent = MentorAgent(
             system_prompt=system_prompt,
             client=client,
             tools=tool_registry if len(tool_registry) > 0 else None
         )
-        print(f"Mentor agent initialized with {len(tool_registry)} tools")
+        print(f"Mentor agent initialized with {len(tool_registry)} tools using {provider}")
     except Exception as e:
         print(f"Agent init failed: {e}")
 

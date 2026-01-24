@@ -17,7 +17,7 @@ class LLMConfig:
     api_key: str
     base_url: Optional[str] = None
     model: str = "gpt-4o"
-    max_tokens: int = 4096
+    max_tokens: int = 512  # reduced for free tier limits
     temperature: float = 0.7
 
 
@@ -103,8 +103,10 @@ class LLMClient:
         openai_tools = [t.to_openai_tool() for t in tools] if tools else None
 
         # Build extra body for OpenRouter reasoning support
+        # Skip for Ollama/local providers that don't support it
         extra_body = kwargs.pop("extra_body", {})
-        if include_reasoning:
+        is_local = "localhost" in (self.config.base_url or "") or "host.docker.internal" in (self.config.base_url or "")
+        if include_reasoning and not is_local:
             # OpenRouter / compatible providers use include_reasoning
             extra_body["include_reasoning"] = True
             # Nudge toward concise but meaningful scratchpad (effort only; max_tokens not allowed together)
@@ -165,6 +167,8 @@ def create_client(
     Providers:
     - openrouter: Uses OpenRouter API (default)
     - openai: Uses OpenAI API directly
+    - gemini: Uses Google Gemini API (free tier available)
+    - ollama: Uses local Ollama server
     """
     if provider == "openrouter":
         key = api_key or os.environ.get("OPENROUTER_API_KEY")
@@ -173,7 +177,8 @@ def create_client(
         return LLMClient(LLMConfig(
             api_key=key,
             base_url="https://openrouter.ai/api/v1",
-            model=model or os.environ.get("OPENROUTER_MODEL", "openai/gpt-5.1")
+            model=model or os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-r1-0528:free"),
+            max_tokens=512  # keep low for free tier
         ))
     elif provider == "openai":
         key = api_key or os.environ.get("OPENAI_API_KEY")
@@ -181,7 +186,24 @@ def create_client(
             raise ValueError("OPENAI_API_KEY not set")
         return LLMClient(LLMConfig(
             api_key=key,
-            model=model or "gpt-5.1"
+            model=model or "gpt-4o"
+        ))
+    elif provider == "gemini":
+        key = api_key or os.environ.get("GEMINI_API_KEY")
+        if not key:
+            raise ValueError("GEMINI_API_KEY not set")
+        return LLMClient(LLMConfig(
+            api_key=key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+            model=model or "gemini-2.0-flash",
+            max_tokens=1024
+        ))
+    elif provider == "ollama":
+        return LLMClient(LLMConfig(
+            api_key="ollama",
+            base_url=os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
+            model=model or os.environ.get("OLLAMA_MODEL", "qwen2.5:14b"),
+            max_tokens=2048
         ))
     else:
         raise ValueError(f"Unknown provider: {provider}")
