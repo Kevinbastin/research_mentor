@@ -1,11 +1,13 @@
+"""Mentor tools for research assistance."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
 # Re-exports for compatibility
-from .tools.legacy.arxiv.client import arxiv_search as arxiv_search  # noqa: F401
-from .tools.utils.math import math_ground as math_ground  # noqa: F401
-from .tools.utils.methodology import methodology_validate as methodology_validate  # noqa: F401
+from .tools.legacy.arxiv.client import arxiv_search as arxiv_search
+from .tools.utils.math import math_ground as math_ground
+from .tools.utils.methodology import methodology_validate as methodology_validate
 
 
 def deep_research(

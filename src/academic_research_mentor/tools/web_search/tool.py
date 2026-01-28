@@ -4,12 +4,13 @@ from typing import Any, Dict, Optional
 import os
 
 from ..base_tool import BaseTool
-from .providers import HTTPX_AVAILABLE, execute_openrouter_search, execute_tavily_search
+from .providers import HTTPX_AVAILABLE, execute_openrouter_search, execute_tavily_search, execute_duckduckgo_search
 
 
 class WebSearchTool(BaseTool):
+    """Web search tool with FREE DuckDuckGo fallback."""
     name = "web_search"
-    version = "0.1"
+    version = "0.2"
 
     def __init__(self) -> None:
         self._client: Any = None
@@ -90,14 +91,14 @@ class WebSearchTool(BaseTool):
                 },
             },
         }
-        meta["operational"] = {"cost_estimate": "medium", "latency_profile": "variable"}
+        meta["operational"] = {"cost_estimate": "low", "latency_profile": "variable"}
         meta["usage"] = {
             "ideal_inputs": [
                 "Recent events or emerging topics",
                 "Queries requiring web sources or non-arXiv material",
             ],
             "anti_patterns": ["Empty query", "Requests for proprietary data"],
-            "prerequisites": ["TAVILY_API_KEY or OPENROUTER_API_KEY"],
+            "prerequisites": ["None - uses FREE DuckDuckGo by default"],
         }
         return meta
 
@@ -108,14 +109,8 @@ class WebSearchTool(BaseTool):
         return "basic"
 
     def is_available(self) -> bool:
-        if self._client is not None:
-            return True
-        if self._ensure_client():
-            return True
-        api_key = str(self._config.get("openrouter_api_key") or os.getenv("OPENROUTER_API_KEY", "")).strip()
-        if api_key and HTTPX_AVAILABLE:
-            return True
-        return False
+        # Always available now - DuckDuckGo is free and requires no API key
+        return True
 
     def execute(self, inputs: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         query = str(inputs.get("query", "")).strip()
@@ -133,6 +128,9 @@ class WebSearchTool(BaseTool):
         include_answer = bool(inputs.get("include_answer", True))
         domain = str(inputs.get("domain", "")).strip() or None
 
+        # Try providers in order: Tavily (paid) -> OpenRouter (paid) -> DuckDuckGo (FREE)
+        
+        # 1. Try Tavily if configured
         tavily_result: Optional[Dict[str, Any]] = None
         tavily_error: Optional[str] = None
         if self._ensure_client():
@@ -151,6 +149,7 @@ class WebSearchTool(BaseTool):
         if tavily_result is not None:
             return tavily_result
 
+        # 2. Try OpenRouter if configured
         openrouter_result, openrouter_error = execute_openrouter_search(
             query=query,
             limit=limit,
@@ -161,11 +160,24 @@ class WebSearchTool(BaseTool):
         if openrouter_result is not None:
             return openrouter_result
 
+        # 3. Use DuckDuckGo as FREE fallback (always available)
+        ddg_result, ddg_error = execute_duckduckgo_search(
+            query=query,
+            limit=limit,
+            domain=domain,
+            mode=mode,
+        )
+        if ddg_result is not None:
+            return ddg_result
+
+        # All providers failed
         note_parts = []
         if tavily_error:
             note_parts.append(f"Tavily: {tavily_error}")
         if openrouter_error:
             note_parts.append(f"OpenRouter: {openrouter_error}")
+        if ddg_error:
+            note_parts.append(f"DuckDuckGo: {ddg_error}")
         note = "; ".join(note_parts) or "No providers available"
 
         return {

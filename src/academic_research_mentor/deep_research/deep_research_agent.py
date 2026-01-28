@@ -1,470 +1,239 @@
-"""Deep Research Agent - Comprehensive research workflow inspired by Open Deep Research.
-
-This module implements a multi-stage research workflow:
-1. Query Planning: Break topic into focused sub-queries
-2. Parallel Search: Execute searches across multiple providers
-3. Result Summarization: Compress findings per source
-4. Gap Analysis: Identify missing coverage areas
-5. Final Synthesis: Produce structured research report
-"""
+"""Deep Research Agent - Uses 100% FREE providers."""
 
 from __future__ import annotations
 
 import os
-import asyncio
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from enum import Enum
 
 
 class ResearchDepth(Enum):
- """Research depth levels controlling thoroughness vs speed."""
- SHALLOW = "shallow" # Quick overview: 5 papers, no gap analysis
- STANDARD = "standard" # Balanced: 15 papers, basic gap analysis
- DEEP = "deep" # Comprehensive: 30+ papers, detailed synthesis
+    SHALLOW = "shallow"
+    STANDARD = "standard"
+    DEEP = "deep"
 
 
 @dataclass
 class ResearchConfig:
- """Configuration for deep research workflow."""
- depth: ResearchDepth = ResearchDepth.STANDARD
- max_papers_per_provider: int = 10
- from_year: Optional[int] = 2020
- include_web_search: bool = True
- include_gap_analysis: bool = True
- 
- # Model preferences - supports local Ollama models on GPU
- # Use environment variables for easy configuration:
- # RESEARCH_SUMMARIZATION_MODEL - for summarizing papers (fast, smaller model)
- # RESEARCH_DEEP_MODEL - for deep analysis (larger reasoning model)
- # RESEARCH_REPORT_MODEL - for report generation
- # USE_LOCAL_LLM=true - to force local Ollama models
- summarization_model: str = "" # Set in __post_init__
- research_model: str = "" # Set in __post_init__
- report_model: str = "" # Set in __post_init__
- 
- # Provider selection (openrouter, openai, ollama)
- provider: str = "" # Set in __post_init__
+    depth: ResearchDepth = ResearchDepth.STANDARD
+    max_papers_per_provider: int = 8
+    from_year: Optional[int] = None
+    include_gap_analysis: bool = True
+    provider: str = ""
 
- def __post_init__(self):
- """Configure models based on environment and depth."""
- import os
- 
- # Determine provider
- use_local = os.getenv("USE_LOCAL_LLM", "false").lower() in ("true", "1", "yes")
- self.provider = os.getenv("LLM_PROVIDER", "ollama" if use_local else "openrouter")
- 
- # Set model defaults based on provider
- if self.provider == "ollama":
- # Local Ollama models optimized for RTX 5090 (32GB VRAM)
- # DeepSeek R1 14B for reasoning, Qwen 2.5 Coder 14B for coding
- self.summarization_model = os.getenv("RESEARCH_SUMMARIZATION_MODEL", "qwen2.5:14b")
- self.research_model = os.getenv("RESEARCH_DEEP_MODEL", "deepseek-r1:14b")
- self.report_model = os.getenv("RESEARCH_REPORT_MODEL", "qwen2.5:14b")
- else:
- # Cloud API models
- self.summarization_model = os.getenv("RESEARCH_SUMMARIZATION_MODEL", "openai:gpt-4o-mini")
- self.research_model = os.getenv("RESEARCH_DEEP_MODEL", "openai:gpt-4.1")
- self.report_model = os.getenv("RESEARCH_REPORT_MODEL", "openai:gpt-4.1")
- 
- # Adjust settings based on depth
- if self.depth == ResearchDepth.SHALLOW:
- self.max_papers_per_provider = 5
- self.include_gap_analysis = False
- elif self.depth == ResearchDepth.DEEP:
- self.max_papers_per_provider = 15
- self.from_year = 2018
+    def __post_init__(self):
+        self.provider = os.getenv("LLM_PROVIDER", "ollama")
+        if self.depth == ResearchDepth.SHALLOW:
+            self.max_papers_per_provider = 4
+        elif self.depth == ResearchDepth.DEEP:
+            self.max_papers_per_provider = 12
 
 
 @dataclass
 class SearchResultSummary:
- """Summarized search result."""
- title: str
- url: str
- source: str
- summary: str
- key_findings: List[str]
- relevance_score: float
- year: Optional[int] = None
- citations: Optional[int] = None
+    title: str
+    url: str
+    source: str
+    summary: str
+    year: Optional[int] = None
+    citations: Optional[int] = None
+    authors: List[str] = field(default_factory=list)
+    venue: Optional[str] = None
 
 
 @dataclass
 class ResearchReport:
- """Final research report structure."""
- topic: str
- summary: str
- key_themes: List[str]
- sources: List[SearchResultSummary]
- gap_analysis: Optional[str] = None
- methodology_recommendations: Optional[str] = None
- future_directions: List[str] = field(default_factory=list)
- markdown_report: str = ""
- metadata: Dict[str, Any] = field(default_factory=dict)
+    topic: str
+    summary: str
+    key_themes: List[str]
+    sources: List[SearchResultSummary]
+    gap_analysis: Optional[str] = None
+    markdown_report: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class DeepResearchAgent:
- """Agent for conducting comprehensive deep research.
- 
- Inspired by LangChain's Open Deep Research, this agent orchestrates
- multi-source search, summarization, and synthesis to produce
- publication-quality research reports.
- """
+    """Deep research using 100% FREE providers:
+    - arXiv (AI/ML/CS)
+    - OpenReview (AI conferences)
+    - PubMed (Medical)
+    - HAL (European)
+    - Zenodo (Datasets)
+    """
 
- def __init__(self, config: Optional[ResearchConfig] = None):
- """Initialize the deep research agent.
- 
- Args:
- config: Research configuration (uses defaults if not provided)
- """
- self.config = config or ResearchConfig()
- self._llm_client = None
- self._registry = None
+    def __init__(self, config: Optional[ResearchConfig] = None):
+        self.config = config or ResearchConfig()
+        self._llm_client = None
 
- def _get_registry(self):
- """Lazy load the provider registry."""
- if self._registry is None:
- from ..literature_review.providers import get_registry
- self._registry = get_registry()
- return self._registry
+    def _get_llm_client(self):
+        if self._llm_client is None:
+            from ..llm import create_client
+            self._llm_client = create_client(provider=self.config.provider)
+        return self._llm_client
 
- def _get_llm_client(self):
- """Lazy load the LLM client."""
- if self._llm_client is None:
- from ..llm import create_client
- self._llm_client = create_client()
- return self._llm_client
+    def _search_arxiv(self, topic: str, limit: int) -> List[SearchResultSummary]:
+        """ArXiv - FREE, great for AI/ML/CS/Physics."""
+        sources = []
+        try:
+            from ..mentor_tools import arxiv_search
+            result = arxiv_search(query=topic, limit=limit)
+            for paper in result.get("papers", []):
+                sources.append(SearchResultSummary(
+                    title=paper.get("title", "Unknown"),
+                    url=paper.get("url", ""),
+                    source="arXiv",
+                    summary=paper.get("summary", "")[:400],
+                    year=paper.get("year"),
+                    authors=paper.get("authors", [])[:3],
+                    venue="arXiv",
+                ))
+        except Exception as e:
+            print(f"[arXiv] Error: {e}")
+        return sources
 
- def _plan_queries(self, topic: str) -> List[str]:
- """Break a research topic into focused sub-queries.
- 
- Args:
- topic: Main research topic
- 
- Returns:
- List of focused sub-queries
- """
- # Generate sub-queries using LLM
- client = self._get_llm_client()
- 
- prompt = f"""Break down this research topic into 3-5 focused search queries.
-Each query should target a different aspect of the topic.
+    def _search_provider(self, provider_name: str, topic: str, limit: int) -> List[SearchResultSummary]:
+        """Generic search using registry provider."""
+        sources = []
+        try:
+            from ..literature_review.providers import get_registry
+            registry = get_registry()
+            provider = registry.get(provider_name)
+            if provider and provider.is_available():
+                results = provider.search(query=topic, limit=limit)
+                for r in results:
+                    sources.append(SearchResultSummary(
+                        title=r.title,
+                        url=r.url,
+                        source=provider_name,
+                        summary=r.abstract[:400] if r.abstract else "",
+                        year=r.year,
+                        authors=r.authors[:3] if r.authors else [],
+                        venue=r.venue,
+                    ))
+        except Exception as e:
+            print(f"[{provider_name}] Error: {e}")
+        return sources
 
-Topic: {topic}
-
-Return ONLY a JSON array of query strings, no explanation.
-Example: ["query1", "query2", "query3"]
-"""
- 
- try:
- from ..llm import Message
- response, _ = client.chat([
- Message.system("You are a research query planner. Output only valid JSON."),
- Message.user(prompt),
- ])
- 
- import json
- import re
- 
- # Extract JSON from response
- content = response.content
- match = re.search(r'\[.*\]', content, re.DOTALL)
- if match:
- queries = json.loads(match.group())
- return queries[:5] # Limit to 5 queries
- except Exception as e:
- print(f"Query planning failed: {e}")
- 
- # Fallback: use the topic directly
- return [topic]
-
- def _search_all_providers(self, queries: List[str]) -> Dict[str, List[Any]]:
- """Execute search across all available providers.
- 
- Args:
- queries: List of search queries
- 
- Returns:
- Dict mapping provider name to list of results
- """
- registry = self._get_registry()
- all_results: Dict[str, List[Any]] = {}
- 
- for query in queries:
- results = registry.search_all(
- query=query,
- limit_per_provider=self.config.max_papers_per_provider,
- from_year=self.config.from_year,
- )
- 
- # Merge results
- for provider, provider_results in results.items():
- if provider not in all_results:
- all_results[provider] = []
- all_results[provider].extend(provider_results)
- 
- # Deduplicate by URL
- for provider in all_results:
- seen_urls = set()
- unique_results = []
- for result in all_results[provider]:
- if result.url not in seen_urls:
- seen_urls.add(result.url)
- unique_results.append(result)
- all_results[provider] = unique_results
- 
- return all_results
-
- def _summarize_result(self, result: Any) -> SearchResultSummary:
- """Summarize a single search result.
- 
- Args:
- result: SearchResult object
- 
- Returns:
- SearchResultSummary with key findings extracted
- """
- client = self._get_llm_client()
- 
- prompt = f"""Summarize this paper/article for a research overview.
-
-Title: {result.title}
-Abstract: {result.abstract[:1000] if result.abstract else 'No abstract available'}
+    def research(self, topic: str) -> ResearchReport:
+        """Conduct research using ALL free providers."""
+        all_sources = []
+        counts = {}
+        
+        # 1. ArXiv - Core AI/ML/CS
+        print(f"[1/5] Searching arXiv...")
+        arxiv = self._search_arxiv(topic, self.config.max_papers_per_provider)
+        all_sources.extend(arxiv)
+        counts["arXiv"] = len(arxiv)
+        print(f"      Found {len(arxiv)} papers")
+        
+        # 2. OpenReview - AI Conferences
+        print(f"[2/5] Searching OpenReview...")
+        openreview = self._search_provider("openreview", topic, self.config.max_papers_per_provider)
+        all_sources.extend(openreview)
+        counts["OpenReview"] = len(openreview)
+        print(f"      Found {len(openreview)} papers")
+        
+        # 3. PubMed - Medical/Clinical
+        print(f"[3/5] Searching PubMed...")
+        pubmed = self._search_provider("pubmed", topic, self.config.max_papers_per_provider)
+        all_sources.extend(pubmed)
+        counts["PubMed"] = len(pubmed)
+        print(f"      Found {len(pubmed)} papers")
+        
+        # 4. HAL - European Research
+        print(f"[4/5] Searching HAL...")
+        hal = self._search_provider("hal", topic, self.config.max_papers_per_provider)
+        all_sources.extend(hal)
+        counts["HAL"] = len(hal)
+        print(f"      Found {len(hal)} papers")
+        
+        # 5. Zenodo - Datasets
+        print(f"[5/5] Searching Zenodo...")
+        zenodo = self._search_provider("zenodo", topic, self.config.max_papers_per_provider)
+        all_sources.extend(zenodo)
+        counts["Zenodo"] = len(zenodo)
+        print(f"      Found {len(zenodo)} papers")
+        
+        total = len(all_sources)
+        print(f"\nTotal: {total} sources from {len([c for c in counts.values() if c > 0])} providers")
+        
+        # Generate analysis using LLM
+        summary = ""
+        key_themes = []
+        
+        try:
+            client = self._get_llm_client()
+            from ..llm import Message
+            
+            if all_sources:
+                # Group by source for better context
+                src_text = ""
+                for source_name in ["arXiv", "OpenReview", "PubMed", "HAL", "Zenodo"]:
+                    provider_sources = [s for s in all_sources if s.source == source_name.lower() or s.source == source_name]
+                    if provider_sources:
+                        src_text += f"\n### {source_name} ({len(provider_sources)} papers)\n"
+                        for s in provider_sources[:5]:
+                            src_text += f"- {s.title} ({s.year}): {s.summary[:150]}...\n"
+                
+                prompt = f"""Analyze these {total} research papers on "{topic}" from multiple sources:
+{src_text}
 
 Provide:
-1. A 2-sentence summary
-2. 2-3 key findings/contributions
+1. **Executive Summary** (3 paragraphs synthesizing findings across sources)
+2. **Key Research Themes** (7 bullet points)
+3. **Methodological Approaches** (common techniques)
+4. **Cross-Source Insights** (compare findings from different sources)
+5. **Research Gaps** (what needs more investigation)
+6. **Future Directions** (emerging trends)
 
-Format as JSON:
-{{"summary": "...", "key_findings": ["finding1", "finding2"]}}
-"""
- 
- try:
- from ..llm import Message
- response, _ = client.chat([
- Message.system("You are a research summarizer. Output only valid JSON."),
- Message.user(prompt),
- ])
- 
- import json
- import re
- 
- content = response.content
- match = re.search(r'\{.*\}', content, re.DOTALL)
- if match:
- data = json.loads(match.group())
- return SearchResultSummary(
- title=result.title,
- url=result.url,
- source=result.source,
- summary=data.get("summary", ""),
- key_findings=data.get("key_findings", []),
- relevance_score=result.relevance_score or 0.5,
- year=result.year,
- citations=result.citations,
- )
- except Exception as e:
- print(f"Summarization failed for {result.title}: {e}")
- 
- # Fallback: basic summary
- return SearchResultSummary(
- title=result.title,
- url=result.url,
- source=result.source,
- summary=result.abstract[:200] if result.abstract else "No summary available",
- key_findings=[],
- relevance_score=result.relevance_score or 0.5,
- year=result.year,
- citations=result.citations,
- )
+Reference specific papers and sources."""
 
- def _analyze_gaps(self, topic: str, summaries: List[SearchResultSummary]) -> str:
- """Identify research gaps from the collected literature.
- 
- Args:
- topic: Original research topic
- summaries: List of summarized results
- 
- Returns:
- Gap analysis text
- """
- if not self.config.include_gap_analysis:
- return ""
- 
- client = self._get_llm_client()
- 
- # Compile findings
- findings_text = "\n".join([
- f"- {s.title} ({s.source}, {s.year}): {s.summary}"
- for s in summaries[:15] # Limit for context
- ])
- 
- prompt = f"""Based on these papers about "{topic}", identify research gaps.
+                response, _ = client.chat([
+                    Message.system("You are a research expert synthesizing multi-source academic literature."),
+                    Message.user(prompt),
+                ])
+                summary = response.content
+                
+                # Extract themes
+                bullets = re.findall(r"[-*•]\s*\*?\*?([^*\n]{15,})", summary)
+                key_themes = [b.strip()[:100] for b in bullets[:10] if len(b.strip()) > 15]
+            else:
+                prompt = f"Provide research overview on: {topic}"
+                response, _ = client.chat([Message.system("Research expert"), Message.user(prompt)])
+                summary = response.content
+                
+        except Exception as e:
+            print(f"[LLM] Error: {e}")
+            summary = f"Found {total} papers. Error: {e}"
+        
+        if not key_themes:
+            key_themes = [s.title[:80] for s in all_sources[:7]] if all_sources else ["No papers found"]
 
-Papers reviewed:
-{findings_text}
+        # Build markdown report
+        md = f"# Research Report: {topic}\n\n"
+        md += f"*{total} sources from: "
+        md += ", ".join([f"{k} ({v})" for k, v in counts.items() if v > 0])
+        md += "*\n\n"
+        md += f"## Analysis\n{summary}\n\n"
+        md += "## Sources by Provider\n"
+        for source_name in ["arXiv", "OpenReview", "PubMed", "HAL", "Zenodo"]:
+            provider_sources = [s for s in all_sources if s.source == source_name.lower() or s.source == source_name]
+            if provider_sources:
+                md += f"\n### {source_name}\n"
+                for s in provider_sources:
+                    md += f"- [{s.title}]({s.url}) ({s.year})\n"
 
-Identify:
-1. Under-explored areas in this topic
-2. Methodological gaps
-3. Potential novel contributions
-
-Be specific and actionable. Keep response under 300 words.
-"""
- 
- try:
- from ..llm import Message
- response, _ = client.chat([
- Message.system("You are a research advisor identifying gaps in literature."),
- Message.user(prompt),
- ])
- return response.content
- except Exception as e:
- print(f"Gap analysis failed: {e}")
- return ""
-
- def _synthesize_report(
- self,
- topic: str,
- summaries: List[SearchResultSummary],
- gap_analysis: str,
- ) -> ResearchReport:
- """Synthesize all findings into a final report.
- 
- Args:
- topic: Original research topic
- summaries: List of summarized results
- gap_analysis: Gap analysis text
- 
- Returns:
- Complete ResearchReport
- """
- client = self._get_llm_client()
- 
- # Generate report synthesis
- findings_text = "\n".join([
- f"- {s.title}: {s.summary}"
- for s in summaries[:20]
- ])
- 
- prompt = f"""Synthesize a research report on "{topic}" based on these papers.
-
-Papers:
-{findings_text}
-
-Gap Analysis:
-{gap_analysis if gap_analysis else "Not conducted"}
-
-Provide:
-1. Executive summary (2-3 sentences)
-2. 3-5 key themes in the literature
-3. 2-3 future research directions
-
-Format as JSON:
-{{"summary": "...", "themes": ["theme1", "theme2"], "future_directions": ["dir1", "dir2"]}}
-"""
- 
- try:
- from ..llm import Message
- response, _ = client.chat([
- Message.system("You are a research synthesizer. Output only valid JSON."),
- Message.user(prompt),
- ])
- 
- import json
- import re
- 
- content = response.content
- match = re.search(r'\{.*\}', content, re.DOTALL)
- if match:
- data = json.loads(match.group())
- 
- report = ResearchReport(
- topic=topic,
- summary=data.get("summary", ""),
- key_themes=data.get("themes", []),
- sources=summaries,
- gap_analysis=gap_analysis,
- future_directions=data.get("future_directions", []),
- metadata={
- "total_papers": len(summaries),
- "depth": self.config.depth.value,
- },
- )
- 
- # Generate markdown report
- from .report_generator import ReportGenerator
- report.markdown_report = ReportGenerator.generate(report)
- 
- return report
- except Exception as e:
- print(f"Synthesis failed: {e}")
- 
- # Fallback report
- return ResearchReport(
- topic=topic,
- summary="Research synthesis could not be completed.",
- key_themes=[],
- sources=summaries,
- gap_analysis=gap_analysis,
- metadata={"error": "synthesis_failed"},
- )
-
- def research(self, topic: str) -> ResearchReport:
- """Execute the full deep research workflow.
- 
- Args:
- topic: Research topic to investigate
- 
- Returns:
- Complete ResearchReport with findings and synthesis
- """
- print(f"[DeepResearch] Starting research on: {topic}")
- print(f"[DeepResearch] Depth: {self.config.depth.value}")
- 
- # Step 1: Plan queries
- print("[DeepResearch] Planning queries...")
- queries = self._plan_queries(topic)
- print(f"[DeepResearch] Generated {len(queries)} sub-queries")
- 
- # Step 2: Search all providers
- print("[DeepResearch] Searching across providers...")
- all_results = self._search_all_providers(queries)
- total_results = sum(len(r) for r in all_results.values())
- print(f"[DeepResearch] Found {total_results} results from {len(all_results)} providers")
- 
- # Step 3: Summarize results
- print("[DeepResearch] Summarizing results...")
- summaries: List[SearchResultSummary] = []
- 
- # Flatten and limit results
- flat_results = []
- for results in all_results.values():
- flat_results.extend(results)
- 
- # Take top N based on depth
- max_to_summarize = {
- ResearchDepth.SHALLOW: 5,
- ResearchDepth.STANDARD: 15,
- ResearchDepth.DEEP: 30,
- }[self.config.depth]
- 
- for result in flat_results[:max_to_summarize]:
- summary = self._summarize_result(result)
- summaries.append(summary)
- 
- print(f"[DeepResearch] Summarized {len(summaries)} papers")
- 
- # Step 4: Analyze gaps
- gap_analysis = ""
- if self.config.include_gap_analysis:
- print("[DeepResearch] Analyzing research gaps...")
- gap_analysis = self._analyze_gaps(topic, summaries)
- 
- # Step 5: Synthesize report
- print("[DeepResearch] Synthesizing final report...")
- report = self._synthesize_report(topic, summaries, gap_analysis)
- 
- print("[DeepResearch] Research complete!")
- return report
-
+        return ResearchReport(
+            topic=topic,
+            summary=summary,
+            key_themes=key_themes,
+            sources=all_sources,
+            markdown_report=md,
+            metadata={
+                "total": total,
+                "provider": self.config.provider,
+                **counts,
+            },
+        )

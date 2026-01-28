@@ -1,4 +1,4 @@
-"""Search providers package for multi-source literature discovery."""
+"""Search providers package - 100% FREE providers only."""
 
 from .base_provider import (
     SearchProvider,
@@ -9,10 +9,12 @@ from .base_provider import (
     register_provider,
 )
 
-# Import providers to auto-register them
-from . import arxiv_provider
-from . import semantic_scholar_provider
-from . import tavily_provider
+# Import FREE provider classes
+from .arxiv_provider import ArxivProvider
+from .openreview_provider import OpenReviewProvider
+from .pubmed_provider import PubMedProvider
+from .hal_provider import HALProvider
+from .zenodo_provider import ZenodoProvider
 
 __all__ = [
     "SearchProvider",
@@ -21,4 +23,9 @@ __all__ = [
     "ProviderRegistry",
     "get_registry",
     "register_provider",
+    "ArxivProvider",
+    "OpenReviewProvider",
+    "PubMedProvider",
+    "HALProvider",
+    "ZenodoProvider",
 ]

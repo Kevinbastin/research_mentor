@@ -42,6 +42,7 @@ class ArxivProvider(SearchProvider):
         """
         try:
             from ...mentor_tools import arxiv_search
+            import re
             
             response = arxiv_search(
                 query=query,
@@ -52,18 +53,30 @@ class ArxivProvider(SearchProvider):
             
             results = []
             for paper in response.get("papers", []):
+                url = paper.get("url", "")
+                
+                # Extract arXiv ID from URL (e.g., https://arxiv.org/abs/2307.01189v2)
+                arxiv_id = None
+                if "/abs/" in url:
+                    arxiv_id = url.split("/abs/")[-1].split("v")[0]  # Remove version
+                
+                # Generate PDF URL
+                pdf_url = None
+                if arxiv_id:
+                    pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+                
                 result = SearchResult(
                     title=paper.get("title", "Untitled"),
-                    abstract=paper.get("abstract", ""),
-                    url=paper.get("url", paper.get("pdf_url", "")),
+                    abstract=paper.get("abstract", paper.get("summary", "")),
+                    url=url,
                     source="arxiv",
                     year=paper.get("year"),
                     authors=paper.get("authors", []),
                     venue=paper.get("venue", "arXiv"),
                     metadata={
-                        "arxiv_id": paper.get("arxiv_id"),
+                        "arxiv_id": arxiv_id,
+                        "pdf_url": pdf_url,
                         "categories": paper.get("categories", []),
-                        "pdf_url": paper.get("pdf_url"),
                     },
                 )
                 results.append(result)
@@ -76,9 +89,12 @@ class ArxivProvider(SearchProvider):
 
 
 # Auto-register when module is imported
-def _register():
+# Auto-register
+_register_instance = ArxivProvider()
+register_provider(_register_instance)
+
+def _register_unused():
     provider = ArxivProvider()
     register_provider(provider)
 
 
-_register()

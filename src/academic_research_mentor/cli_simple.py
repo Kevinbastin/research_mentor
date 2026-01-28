@@ -108,10 +108,32 @@ def main() -> None:
     """Main entry point."""
     load_dotenv()
     
-    # Check for API key
-    if not os.environ.get("OPENROUTER_API_KEY") and not os.environ.get("OPENAI_API_KEY"):
-        console.print("[red]Error: No API key found.[/red]")
-        console.print("Set OPENROUTER_API_KEY or OPENAI_API_KEY in your .env file")
+    # Determine provider (Ollama is FREE, others need API keys)
+    provider = os.environ.get("LLM_PROVIDER", "").strip()
+    
+    # If no provider set, check for available API keys
+    if not provider:
+        if os.environ.get("OPENROUTER_API_KEY"):
+            provider = "openrouter"
+        elif os.environ.get("OPENAI_API_KEY"):
+            provider = "openai"
+        elif os.environ.get("GEMINI_API_KEY"):
+            provider = "gemini"
+        else:
+            # Default to Ollama (FREE, no API key required)
+            provider = "ollama"
+    
+    # Ollama doesn't need API key check
+    if provider == "ollama":
+        console.print("[dim]Using Ollama (FREE, local) - no API key required[/dim]")
+    elif provider == "openrouter" and not os.environ.get("OPENROUTER_API_KEY"):
+        console.print("[red]Error: OPENROUTER_API_KEY not set[/red]")
+        sys.exit(1)
+    elif provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
+        console.print("[red]Error: OPENAI_API_KEY not set[/red]")
+        sys.exit(1)
+    elif provider == "gemini" and not os.environ.get("GEMINI_API_KEY"):
+        console.print("[red]Error: GEMINI_API_KEY not set[/red]")
         sys.exit(1)
     
     # Initialize tools
@@ -127,7 +149,6 @@ def main() -> None:
     # Create agent
     try:
         system_prompt = load_system_prompt()
-        provider = "openrouter" if os.environ.get("OPENROUTER_API_KEY") else "openai"
         client = create_client(provider=provider)
         agent = MentorAgent(
             system_prompt=system_prompt,

@@ -247,3 +247,56 @@ def _format_results(
         output["citations"] = formatter.to_output_block(citations)
 
     return output
+
+def execute_duckduckgo_search(
+    *,
+    query: str,
+    limit: int,
+    domain: Optional[str],
+    mode: str,
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Execute a FREE DuckDuckGo web search - no API key required."""
+    try:
+        from duckduckgo_search import DDGS
+    except ImportError:
+        return None, "duckduckgo-search not installed"
+    
+    try:
+        with DDGS() as ddgs:
+            # Append domain filter if specified
+            search_query = f"{query} site:{domain}" if domain else query
+            
+            # Get results
+            raw_results = list(ddgs.text(
+                search_query,
+                max_results=min(limit, 10),
+                region="wt-wt",  # Worldwide
+            ))
+    except Exception as exc:
+        return None, f"DuckDuckGo search error: {exc}"
+    
+    if not raw_results:
+        return {"results": [], "query": query, "note": "No results found"}, None
+    
+    # Convert to standard format
+    entries = []
+    for r in raw_results:
+        entries.append({
+            "title": r.get("title", ""),
+            "url": r.get("href", r.get("link", "")),
+            "snippet": r.get("body", r.get("snippet", "")),
+            "source": "duckduckgo",
+        })
+    
+    formatted = _format_results(
+        query=query,
+        entries=entries,
+        limit=limit,
+        domain=domain,
+        mode=mode,
+        provider="duckduckgo",
+        note_suffix="DuckDuckGo (FREE)",
+        summary=None,
+        search_depth=None,
+    )
+    return formatted, None
