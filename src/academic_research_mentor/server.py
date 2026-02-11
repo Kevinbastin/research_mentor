@@ -1,4 +1,4 @@
-"""FastAPI server for Research Mentor - uses direct OpenAI SDK."""
+"""FastAPI server for Research Mentor - 100% FREE, local Ollama only."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from supermemory import Supermemory
 
 from academic_research_mentor.agent import MentorAgent, ToolRegistry, create_default_tools
 from academic_research_mentor.llm import create_client
@@ -21,8 +20,9 @@ app = FastAPI(title="Academic Research Mentor API")
 
 # Global instances
 mentor_agent: Optional[MentorAgent] = None
-supermemory_client: Optional[Supermemory] = None
 document_store: dict[str, dict] = {}
+# FREE local in-memory search (replaces paid Supermemory)
+memory_store: list[dict] = []
 
 # CORS
 app.add_middleware(
@@ -88,36 +88,40 @@ def extract_text_from_docx(file_path: str) -> str:
         return "[DOCX parsing requires python-docx]"
 
 
-# --- Supermemory Helpers ---
+# --- FREE Local Memory Helpers ---
 
-def store_in_supermemory(doc_id: str, filename: str, content: str) -> bool:
-    """Store document in Supermemory."""
-    if not supermemory_client:
-        return False
-    try:
-        supermemory_client.memory.add(
-            content=content,
-            metadata={"doc_id": doc_id, "filename": filename, "type": "research_document"}
-        )
-        return True
-    except Exception as e:
-        print(f"Supermemory store failed: {e}")
-        return False
+def store_in_memory(doc_id: str, filename: str, content: str) -> bool:
+    """Store document in local in-memory search index (FREE, no API)."""
+    memory_store.append({
+        "doc_id": doc_id,
+        "filename": filename,
+        "content": content,
+        "type": "research_document",
+    })
+    return True
 
 
-def search_supermemory(query: str, limit: int = 5) -> list[dict]:
-    """Search Supermemory for context."""
-    if not supermemory_client:
+def search_memory_local(query: str, limit: int = 5) -> list[dict]:
+    """Search local memory using keyword matching (FREE, no API).
+
+    Simple but effective: scores each stored document by how many
+    query keywords appear in its content, then returns the top results.
+    """
+    if not memory_store:
         return []
-    try:
-        response = supermemory_client.search.execute(q=query, limit=limit)
-        return [
-            {"content": getattr(r, "content", str(r)), "metadata": getattr(r, "metadata", {})}
-            for r in (response.results or [])
-        ]
-    except Exception as e:
-        print(f"Supermemory search failed: {e}")
-        return []
+    query_terms = query.lower().split()
+    scored: list[tuple[float, dict]] = []
+    for entry in memory_store:
+        text = entry.get("content", "").lower()
+        hits = sum(1 for t in query_terms if t in text)
+        if hits > 0:
+            score = hits / max(len(query_terms), 1)
+            scored.append((score, entry))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [
+        {"content": e["content"][:2000], "metadata": {"doc_id": e["doc_id"], "filename": e["filename"]}}
+        for _, e in scored[:limit]
+    ]
 
 
 def _clean_title(raw: str) -> str:
@@ -165,21 +169,10 @@ async def generate_title_from_text(text: str) -> str:
 
 @app.on_event("startup")
 async def startup():
-    """Initialize agent and clients."""
-    global mentor_agent, supermemory_client
+    """Initialize agent and clients - 100% FREE, local only."""
+    global mentor_agent
     
-    # Load environment
-    from dotenv import load_dotenv
-    load_dotenv()
-    
-    # Initialize Supermemory
-    sm_key = os.environ.get("SUPERMEMORY_API_KEY")
-    if sm_key:
-        try:
-            supermemory_client = Supermemory(api_key=sm_key, base_url="https://api.supermemory.ai/")
-            print("Supermemory initialized")
-        except Exception as e:
-            print(f"Supermemory init failed: {e}")
+    print("Starting Academic Research Mentor (FREE local mode)...")
     
     # Load system prompt
     system_prompt = "You are a helpful research mentor."
@@ -202,17 +195,15 @@ async def startup():
     except Exception as e:
         print(f"Tool init warning: {e}")
     
-    # Create agent with tools
-    # Provider can be: openrouter, gemini, ollama, openai
+    # Create agent with local Ollama (FREE, no API key)
     try:
-        provider = os.environ.get("LLM_PROVIDER", "gemini")  # default to free Gemini
-        client = create_client(provider=provider)
+        client = create_client(provider="ollama")
         mentor_agent = MentorAgent(
             system_prompt=system_prompt,
             client=client,
             tools=tool_registry if len(tool_registry) > 0 else None
         )
-        print(f"Mentor agent initialized with {len(tool_registry)} tools using {provider}")
+        print(f"Mentor agent initialized with {len(tool_registry)} tools using Ollama (FREE)")
     except Exception as e:
         print(f"Agent init failed: {e}")
 
@@ -254,7 +245,7 @@ async def chat(request: ChatRequest):
     
     # Build context
     context = request.document_context or ""
-    memory_results = search_supermemory(request.prompt, limit=3)
+    memory_results = search_memory_local(request.prompt, limit=3)
     if memory_results:
         memory_ctx = "\n".join(f"[Memory] {r['content'][:2000]}" for r in memory_results)
         context = f"{context}\n\n{memory_ctx}" if context else memory_ctx
@@ -276,7 +267,7 @@ async def chat_stream(request: ChatRequest):
     async def sse_generator() -> AsyncIterator[str]:
         # Build context
         context = request.document_context or ""
-        memory_results = search_supermemory(request.prompt, limit=3)
+        memory_results = search_memory_local(request.prompt, limit=3)
         if memory_results:
             memory_ctx = "\n".join(f"[Memory] {r['content'][:2000]}" for r in memory_results)
             context = f"{context}\n\n{memory_ctx}" if context else memory_ctx
@@ -349,7 +340,7 @@ async def upload(file: UploadFile = File(...)):
     
     doc_id = f"doc-{len(document_store) + 1}"
     document_store[doc_id] = {"id": doc_id, "filename": file.filename, "content": text, "pages": pages}
-    store_in_supermemory(doc_id, file.filename, text)
+    store_in_memory(doc_id, file.filename, text)
     
     return UploadResponse(id=doc_id, filename=file.filename, content=text, pages=pages)
 
@@ -369,13 +360,13 @@ async def delete_document(doc_id: str):
 
 @app.post("/api/memory/search")
 async def search_memory(request: MemorySearchRequest):
-    results = search_supermemory(request.query, request.limit)
+    results = search_memory_local(request.query, request.limit)
     return {"results": results, "count": len(results)}
 
 
 @app.get("/api/memory/status")
 async def memory_status():
-    return {"connected": supermemory_client is not None, "provider": "supermemory" if supermemory_client else None}
+    return {"connected": True, "provider": "local-free"}
 
 
 @app.post("/api/chat/title", response_model=TitleResponse)

@@ -76,7 +76,8 @@ class ZenodoProvider(SearchProvider):
                 if from_year and year and year < from_year:
                     continue
                 
-                url = hit.get("links", {}).get("html", f"https://zenodo.org/record/{hit.get(id, )}")
+                record_id = hit.get('id', '')
+                url = f'https://zenodo.org/records/{record_id}'
                 
                 results.append(SearchResult(
                     title=title,

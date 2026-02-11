@@ -5,6 +5,8 @@ from .tools import Tool, ToolRegistry
 from .tool_adapters import (
     WebSearchToolAdapter,
     ArxivSearchToolAdapter,
+    LiteratureSearchToolAdapter,
+    SimilarPapersToolAdapter,
     GuidelinesToolAdapter,
     create_default_tools,
 )
@@ -15,6 +17,8 @@ __all__ = [
     "ToolRegistry",
     "WebSearchToolAdapter",
     "ArxivSearchToolAdapter",
+    "LiteratureSearchToolAdapter",
+    "SimilarPapersToolAdapter",
     "GuidelinesToolAdapter",
     "create_default_tools",
 ]

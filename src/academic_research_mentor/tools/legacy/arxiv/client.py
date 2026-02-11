@@ -65,8 +65,7 @@ def _fetch_with_retry(url: str, params: Optional[Dict[str, Any]] = None, timeout
 
 
 def arxiv_search(query: str, from_year: Optional[int] = None, limit: int = 10, sort_by: str = "relevance") -> Dict[str, Any]:
-    if httpx is None:
-        return {"papers": [], "note": "httpx unavailable; could not query arXiv."}
+    # httpx is optional — _fetch_with_retry has a stdlib urllib fallback
 
     base_url = "https://export.arxiv.org/api/query"
     full_query = build_arxiv_query(query, from_year)

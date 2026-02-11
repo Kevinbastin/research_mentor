@@ -18,17 +18,23 @@ class ResearchDepth(Enum):
 @dataclass
 class ResearchConfig:
     depth: ResearchDepth = ResearchDepth.STANDARD
-    max_papers_per_provider: int = 8
+    max_papers_per_provider: int = 10
+    top_k: int = 10  # Return top 10 papers overall
     from_year: Optional[int] = None
     include_gap_analysis: bool = True
     provider: str = ""
 
     def __post_init__(self):
-        self.provider = os.getenv("LLM_PROVIDER", "ollama")
+        self.provider = "ollama"  # Always use local Ollama qwen model
         if self.depth == ResearchDepth.SHALLOW:
-            self.max_papers_per_provider = 4
+            self.max_papers_per_provider = 5
+            self.top_k = 10
+        elif self.depth == ResearchDepth.STANDARD:
+            self.max_papers_per_provider = 10
+            self.top_k = 10
         elif self.depth == ResearchDepth.DEEP:
-            self.max_papers_per_provider = 12
+            self.max_papers_per_provider = 15
+            self.top_k = 10
 
 
 @dataclass
@@ -116,8 +122,55 @@ class DeepResearchAgent:
             print(f"[{provider_name}] Error: {e}")
         return sources
 
+    def _score_relevance(self, topic: str, paper: SearchResultSummary) -> float:
+        """Score a paper's relevance to the topic using keyword matching."""
+        topic_words = set(topic.lower().split())
+        # Remove common stop words
+        stop_words = {"the", "a", "an", "of", "in", "on", "for", "and", "or", "to", "is", "with", "by", "from", "at", "as"}
+        topic_words -= stop_words
+
+        text = f"{paper.title} {paper.summary}".lower()
+        if not topic_words:
+            return 0.0
+
+        # Count how many topic keywords appear in the paper text
+        matches = sum(1 for w in topic_words if w in text)
+        score = matches / len(topic_words)
+
+        # No year bias — papers from any year are treated equally
+
+        return score
+
+    def _rank_top_papers(self, topic: str, sources: List[SearchResultSummary], top_k: int = 10) -> List[SearchResultSummary]:
+        """Pick the top 10 most relevant papers across ALL providers.
+        
+        Scores every paper by keyword relevance, sorts globally, returns the best 10.
+        No per-provider quota — purely the best papers regardless of source.
+        """
+        if len(sources) <= top_k:
+            return sources
+
+        # Score every paper
+        scored = [(self._score_relevance(topic, s), s) for s in sources]
+
+        # Sort by score descending
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        top = [paper for _, paper in scored[:top_k]]
+
+        # Log which providers made it
+        prov_counts: dict[str, int] = {}
+        for p in top:
+            key = p.source.lower().strip()
+            prov_counts[key] = prov_counts.get(key, 0) + 1
+        for prov, cnt in sorted(prov_counts.items()):
+            print(f"[Ranking] {prov}: {cnt} paper(s) in top {top_k}")
+        print(f"[Ranking] Total selected: {len(top)} from {len(prov_counts)} providers")
+
+        return top
+
     def research(self, topic: str) -> ResearchReport:
-        """Conduct research using ALL free providers."""
+        """Conduct research using ALL free providers, return top 10 papers."""
         all_sources = []
         counts = {}
         
@@ -156,8 +209,13 @@ class DeepResearchAgent:
         counts["Zenodo"] = len(zenodo)
         print(f"      Found {len(zenodo)} papers")
         
-        total = len(all_sources)
-        print(f"\nTotal: {total} sources from {len([c for c in counts.values() if c > 0])} providers")
+        total_fetched = len(all_sources)
+        print(f"\nTotal fetched: {total_fetched} from {len([c for c in counts.values() if c > 0])} providers")
+        
+        # Rank and select top 10 papers using LLM
+        top_sources = self._rank_top_papers(topic, all_sources, self.config.top_k)
+        total = len(top_sources)
+        print(f"Top {total} papers selected")
         
         # Generate analysis using LLM
         summary = ""
@@ -167,17 +225,15 @@ class DeepResearchAgent:
             client = self._get_llm_client()
             from ..llm import Message
             
-            if all_sources:
-                # Group by source for better context
+            if top_sources:
+                # Show all top 10 papers to LLM for analysis
                 src_text = ""
-                for source_name in ["arXiv", "OpenReview", "PubMed", "HAL", "Zenodo"]:
-                    provider_sources = [s for s in all_sources if s.source == source_name.lower() or s.source == source_name]
-                    if provider_sources:
-                        src_text += f"\n### {source_name} ({len(provider_sources)} papers)\n"
-                        for s in provider_sources[:5]:
-                            src_text += f"- {s.title} ({s.year}): {s.summary[:150]}...\n"
+                for i, s in enumerate(top_sources, 1):
+                    src_text += f"\n{i}. [{s.source}] {s.title} ({s.year})\n"
+                    src_text += f"   Authors: {', '.join(s.authors)}\n"
+                    src_text += f"   {s.summary[:200]}\n"
                 
-                prompt = f"""Analyze these {total} research papers on "{topic}" from multiple sources:
+                prompt = f"""Analyze these top {total} research papers on "{topic}" from multiple academic sources:
 {src_text}
 
 Provide:
@@ -209,30 +265,30 @@ Reference specific papers and sources."""
             summary = f"Found {total} papers. Error: {e}"
         
         if not key_themes:
-            key_themes = [s.title[:80] for s in all_sources[:7]] if all_sources else ["No papers found"]
+            key_themes = [s.title[:80] for s in top_sources[:7]] if top_sources else ["No papers found"]
 
-        # Build markdown report
+        # Build markdown report with top 10 papers
         md = f"# Research Report: {topic}\n\n"
-        md += f"*{total} sources from: "
+        md += f"*Top {total} papers selected from {total_fetched} results across: "
         md += ", ".join([f"{k} ({v})" for k, v in counts.items() if v > 0])
         md += "*\n\n"
         md += f"## Analysis\n{summary}\n\n"
-        md += "## Sources by Provider\n"
-        for source_name in ["arXiv", "OpenReview", "PubMed", "HAL", "Zenodo"]:
-            provider_sources = [s for s in all_sources if s.source == source_name.lower() or s.source == source_name]
-            if provider_sources:
-                md += f"\n### {source_name}\n"
-                for s in provider_sources:
-                    md += f"- [{s.title}]({s.url}) ({s.year})\n"
+        md += f"## Top {total} Papers\n\n"
+        for i, s in enumerate(top_sources, 1):
+            authors = ", ".join(s.authors) if s.authors else "Unknown"
+            md += f"{i}. **[{s.title}]({s.url})** ({s.year})\n"
+            md += f"   - Source: {s.source} | Authors: {authors}\n"
+            md += f"   - {s.summary[:200]}\n\n"
 
         return ResearchReport(
             topic=topic,
             summary=summary,
             key_themes=key_themes,
-            sources=all_sources,
+            sources=top_sources,
             markdown_report=md,
             metadata={
-                "total": total,
+                "total_fetched": total_fetched,
+                "top_k": total,
                 "provider": self.config.provider,
                 **counts,
             },

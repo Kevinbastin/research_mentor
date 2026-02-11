@@ -57,64 +57,69 @@ def topics_to_search_query(topics: List[str]) -> str:
 
 
 def perform_literature_searches(topics: List[str], relax: bool = False) -> Dict[str, Any]:
+    """Search ALL 5 FREE providers: arXiv, OpenReview, PubMed, HAL, Zenodo."""
     query = topics_to_search_query(topics)
+    limit = 10 if relax else 5
 
-    use_orchestrator = os.getenv("FF_REGISTRY_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+    # Import all FREE providers
+    from .providers import (
+        ArxivProvider,
+        OpenReviewProvider,
+        PubMedProvider,
+        HALProvider,
+        ZenodoProvider,
+    )
 
-    if use_orchestrator:
+    search_results = {
+        "arxiv": {"papers": []},
+        "openreview": {"threads": []},
+        "pubmed": {"papers": []},
+        "hal": {"papers": []},
+        "zenodo": {"papers": []},
+        "all_papers": [],
+    }
+
+    providers = [
+        ("arxiv", ArxivProvider, "papers"),
+        ("openreview", OpenReviewProvider, "threads"),
+        ("pubmed", PubMedProvider, "papers"),
+        ("hal", HALProvider, "papers"),
+        ("zenodo", ZenodoProvider, "papers"),
+    ]
+
+    for name, ProviderClass, key in providers:
         try:
-            from ..core.orchestrator import Orchestrator
-            from ..tools import auto_discover
-
-            auto_discover()
-
-            from_year = None if relax else 2020
-            limit = 15 if relax else 10
-            or_limit = 10 if relax else 8
-
-            orch = Orchestrator()
-            result = orch.execute_task(
-                task="literature_search",
-                inputs={
-                    "query": query,
-                    "from_year": from_year,
-                    "limit": limit,
-                    "or_limit": or_limit,
-                },
-                context={"goal": f"find papers about {' '.join(topics)}"},
-            )
-
-            if result["execution"]["executed"] and result["results"]:
-                tool_result = result["results"]
-                arxiv_papers = [p for p in tool_result.get("results", []) if p.get("source") == "arxiv"]
-                openreview_papers = [p for p in tool_result.get("results", []) if p.get("source") == "openreview"]
-
-                return {
-                    "arxiv": {"papers": arxiv_papers},
-                    "openreview": {"threads": openreview_papers},
-                    "orchestrator_used": True,
-                    "tool_used": result["execution"]["tool_used"],
+            provider = ProviderClass()
+            results = provider.search(query, limit=limit)
+            papers = [
+                {
+                    "title": r.title,
+                    "authors": r.authors,
+                    "abstract": r.abstract,
+                    "url": r.url,
+                    "year": r.year,
+                    "source": name,
+                    "pdf_url": r.metadata.get("pdf_url"),
+                    "arxiv_id": r.metadata.get("arxiv_id"),
                 }
-            else:
-                print(f"Orchestrator execution failed: {result['execution'].get('reason', 'Unknown')}")
+                for r in results
+            ]
+            search_results[name][key] = papers
+            search_results["all_papers"].extend(papers)
+            print(f"   ✓ {name}: {len(papers)} papers")
         except Exception as e:
-            print(f"Orchestrator search failed, falling back to legacy: {e}")
+            print(f"   ✗ {name}: {e}")
+            search_results[name][key] = []
 
-    search_results = {"arxiv": {}, "openreview": {}}
-
-    try:
-        from_year = None if relax else 2020
-        arxiv_limit = 15 if relax else 10
-        search_results["arxiv"] = arxiv_search(query=query, from_year=from_year, limit=arxiv_limit)
-    except Exception as e:
-        print(f"arXiv search failed: {e}")
-        search_results["arxiv"] = {"papers": [], "note": f"Search failed: {e}"}
-
-    search_results["orchestrator_used"] = False
+    print(f"📊 Total: {len(search_results['all_papers'])} papers from 5 sources")
     return search_results
 
 
 def has_meaningful_results(search_results: Dict[str, Any]) -> bool:
     arxiv_papers = search_results.get("arxiv", {}).get("papers", [])
     openreview_threads = search_results.get("openreview", {}).get("threads", [])
-    return len(arxiv_papers) > 0 or len(openreview_threads) > 0
+    pubmed_papers = search_results.get("pubmed", {}).get("papers", [])
+    hal_papers = search_results.get("hal", {}).get("papers", [])
+    zenodo_papers = search_results.get("zenodo", {}).get("papers", [])
+    return (len(arxiv_papers) > 0 or len(openreview_threads) > 0 or 
+            len(pubmed_papers) > 0 or len(hal_papers) > 0 or len(zenodo_papers) > 0)

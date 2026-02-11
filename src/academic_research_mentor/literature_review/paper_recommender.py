@@ -13,11 +13,43 @@ NO OpenRouter (PAID)
 
 from __future__ import annotations
 
+import json
 import re
-import httpx
+import urllib.request
+import urllib.parse
+import urllib.error
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
+
+
+class _SimpleHTTP:
+    """Minimal HTTP client using stdlib urllib — replaces httpx."""
+
+    def __init__(self, timeout: float = 30.0, headers: Optional[Dict[str, str]] = None):
+        self.timeout = timeout
+        self.headers = headers or {}
+
+    def get(self, url: str, params: Optional[Dict[str, Any]] = None):
+        if params:
+            url = f"{url}?{urllib.parse.urlencode(params)}"
+        req = urllib.request.Request(url, headers=self.headers)
+        try:
+            resp = urllib.request.urlopen(req, timeout=self.timeout)
+            return _SimpleResponse(resp.read().decode("utf-8", errors="replace"), resp.status)
+        except urllib.error.HTTPError as e:
+            return _SimpleResponse("", e.code)
+        except Exception:
+            return _SimpleResponse("", 0)
+
+
+class _SimpleResponse:
+    def __init__(self, text: str, status_code: int):
+        self.text = text
+        self.status_code = status_code
+
+    def json(self) -> Any:
+        return json.loads(self.text)
 
 
 @dataclass
@@ -54,12 +86,12 @@ class FREEPaperRecommender:
         self.timeout = timeout
         self._client = None
     
-    def _get_client(self) -> httpx.Client:
+    def _get_client(self) -> _SimpleHTTP:
         if self._client is None:
             headers = {
                 "User-Agent": "AcademicResearchMentor/1.0 (mailto:research@localhost)",
             }
-            self._client = httpx.Client(timeout=self.timeout, headers=headers)
+            self._client = _SimpleHTTP(timeout=self.timeout, headers=headers)
         return self._client
     
     def find_similar(

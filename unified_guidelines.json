@@ -1,0 +1,276 @@
+[
+  {
+    "id": "g001",
+    "stage": "A",
+    "stage_name": "Pre-Idea",
+    "domain": "general",
+    "title": "Topic Selection Best Practices",
+    "content": "When selecting a research topic, consider: 1) Impact - will this matter to the community? 2) Novelty - is there a clear gap? 3) Feasibility - can you execute this with available resources? 4) Scope - is it neither too broad nor too narrow?",
+    "checklist": [
+      "Identify 3-5 candidate research areas",
+      "Conduct preliminary literature scan for each",
+      "Assess personal expertise and interest alignment",
+      "Check feasibility with available compute/data",
+      "Discuss with advisor or peers for feedback"
+    ],
+    "pitfalls": [
+      "Choosing a topic that is too broad to complete",
+      "Ignoring existing work in the area",
+      "Selecting based on trends alone without genuine interest"
+    ]
+  },
+  {
+    "id": "g002",
+    "stage": "B",
+    "stage_name": "Idea",
+    "domain": "general",
+    "title": "Hypothesis and Idea Development",
+    "content": "A strong research idea should: 1) Address a clear problem or gap. 2) Have a testable hypothesis. 3) Offer a novel angle or contribution. 4) Be positioned relative to existing work.",
+    "checklist": [
+      "Clearly state the research question",
+      "Formulate a testable hypothesis",
+      "Identify the novel contribution",
+      "Search for prior work addressing the same problem",
+      "Define what success looks like"
+    ],
+    "pitfalls": [
+      "Vague or untestable hypotheses",
+      "Not checking if the idea already exists",
+      "Confusing incremental improvement with novelty"
+    ]
+  },
+  {
+    "id": "g003",
+    "stage": "C",
+    "stage_name": "Research Plan",
+    "domain": "general",
+    "title": "Experimental Design and Methodology",
+    "content": "A rigorous research plan includes: 1) Clear baselines for comparison. 2) Well-defined evaluation metrics. 3) Dataset selection with justification. 4) Ablation study plan. 5) Risk mitigation strategies.",
+    "checklist": [
+      "Choose appropriate baseline methods",
+      "Define primary and secondary evaluation metrics",
+      "Select datasets with clear justification",
+      "Plan ablation studies to validate each component",
+      "Identify potential risks and failure modes",
+      "Estimate compute requirements",
+      "Create a timeline with milestones"
+    ],
+    "pitfalls": [
+      "Weak or missing baselines",
+      "Cherry-picking evaluation metrics",
+      "Not planning for negative results",
+      "Underestimating compute and time requirements"
+    ]
+  },
+  {
+    "id": "g004",
+    "stage": "C",
+    "stage_name": "Research Plan",
+    "domain": "ai_ml",
+    "title": "AI/ML Experimental Best Practices",
+    "content": "For AI/ML research: 1) Use standard benchmarks when available. 2) Report mean and standard deviation across runs. 3) Include computational cost analysis. 4) Address reproducibility (seeds, hyperparameters). 5) Consider ethical implications.",
+    "checklist": [
+      "Use standard benchmark datasets",
+      "Run experiments with multiple random seeds (≥3)",
+      "Report mean ± standard deviation",
+      "Document all hyperparameters",
+      "Include training/inference cost analysis",
+      "Plan for reproducibility (code release)",
+      "Consider fairness and bias implications"
+    ],
+    "pitfalls": [
+      "Single-run results without variance",
+      "Unfair comparisons (different compute budgets)",
+      "Missing ablation studies",
+      "Not reporting negative results"
+    ]
+  },
+  {
+    "id": "g005",
+    "stage": "D",
+    "stage_name": "First Draft",
+    "domain": "general",
+    "title": "Paper Structure and Writing",
+    "content": "A well-structured paper follows: Abstract → Introduction → Related Work → Method → Experiments → Results → Discussion → Conclusion. Each section has a clear purpose and logical flow.",
+    "checklist": [
+      "Abstract summarizes the full paper in 150-250 words",
+      "Introduction motivates the problem and states contributions",
+      "Related work positions your approach vs. prior art",
+      "Method section is reproducible",
+      "Experiments section describes setup clearly",
+      "Results include tables, figures, and analysis",
+      "Discussion addresses limitations",
+      "Conclusion summarizes contributions and future work"
+    ],
+    "pitfalls": [
+      "Abstract that doesn't match the paper content",
+      "Introduction without clear contribution statement",
+      "Method section missing implementation details",
+      "Results without statistical significance"
+    ]
+  },
+  {
+    "id": "g006",
+    "stage": "E",
+    "stage_name": "Second Draft",
+    "domain": "general",
+    "title": "Revision and Quality Checks",
+    "content": "During revision: 1) Check all claims are supported by evidence. 2) Verify mathematical notation consistency. 3) Ensure all figures are referenced and clear. 4) Check citation completeness. 5) Read from a reviewer's perspective.",
+    "checklist": [
+      "Every factual claim has a citation",
+      "Mathematical notation is consistent throughout",
+      "All figures and tables are referenced in text",
+      "Figure captions are self-contained",
+      "No grammatical or spelling errors",
+      "Limitations section is honest and complete",
+      "Related work is comprehensive and fair",
+      "Page limit is respected"
+    ],
+    "pitfalls": [
+      "Unsupported claims or overclaiming",
+      "Inconsistent notation between sections",
+      "Figures that don't match the text",
+      "Missing or incomplete citations"
+    ]
+  },
+  {
+    "id": "g007",
+    "stage": "F",
+    "stage_name": "Final",
+    "domain": "general",
+    "title": "Submission Readiness",
+    "content": "Before submission: 1) Verify venue formatting requirements. 2) Check anonymization (for double-blind). 3) Prepare supplementary materials. 4) Write a compelling cover letter if needed. 5) Double-check all links and references.",
+    "checklist": [
+      "Formatting matches venue template exactly",
+      "Paper is properly anonymized (if double-blind)",
+      "Supplementary materials are organized",
+      "All references are complete (no 'et al.' only entries)",
+      "Code/data links are prepared (anonymous if needed)",
+      "PDF renders correctly on different viewers",
+      "Author list and affiliations are correct",
+      "Acknowledgments section is complete"
+    ],
+    "pitfalls": [
+      "Formatting violations leading to desk rejection",
+      "Accidental de-anonymization",
+      "Broken or missing references",
+      "Exceeding page limits"
+    ]
+  },
+  {
+    "id": "g008",
+    "stage": "B",
+    "stage_name": "Idea",
+    "domain": "ai_ml",
+    "title": "AI/ML Novelty Assessment",
+    "content": "To assess novelty in AI/ML: 1) Search arXiv for similar approaches. 2) Check top venue proceedings (NeurIPS, ICML, ICLR, AAAI, ACL). 3) Look for concurrent work. 4) Identify your unique angle. 5) Articulate what existing methods cannot do.",
+    "checklist": [
+      "Search arXiv with multiple query formulations",
+      "Check proceedings of top 5 venues in your area",
+      "Search Google Scholar for related terms",
+      "Identify 3+ differences from closest prior work",
+      "Verify no concurrent work submitted recently"
+    ],
+    "pitfalls": [
+      "Insufficient literature search",
+      "Novelty claim based on application domain only",
+      "Ignoring concurrent/simultaneous submissions"
+    ]
+  },
+  {
+    "id": "g009",
+    "stage": "D",
+    "stage_name": "First Draft",
+    "domain": "ai_ml",
+    "title": "AI/ML Results Presentation",
+    "content": "Present AI/ML results effectively: 1) Main results table with all baselines. 2) Ablation study table. 3) Training curves or convergence plots. 4) Qualitative examples. 5) Error analysis. 6) Computational cost comparison.",
+    "checklist": [
+      "Main results table with baselines and your method",
+      "Bold best results, underline second best",
+      "Include standard deviations",
+      "Ablation table showing each component's contribution",
+      "Training convergence plot",
+      "Qualitative examples (success and failure cases)",
+      "Per-class or per-category breakdown",
+      "Inference speed comparison"
+    ],
+    "pitfalls": [
+      "Missing baselines that reviewers expect",
+      "Results without error bars or confidence intervals",
+      "Cherry-picked qualitative examples",
+      "No failure case analysis"
+    ]
+  },
+  {
+    "id": "g010",
+    "stage": "C",
+    "stage_name": "Research Plan",
+    "domain": "hci",
+    "title": "HCI User Study Design",
+    "content": "For HCI research: 1) Define target user population. 2) Determine sample size (power analysis). 3) Choose between-subjects vs within-subjects design. 4) Plan IRB approval. 5) Design questionnaires (SUS, NASA-TLX, custom).",
+    "checklist": [
+      "Define target user demographics",
+      "Conduct power analysis for sample size",
+      "Choose experimental design (between/within subjects)",
+      "Prepare informed consent forms",
+      "Submit IRB application",
+      "Design pre/post questionnaires",
+      "Plan think-aloud protocol if qualitative",
+      "Prepare task scenarios"
+    ],
+    "pitfalls": [
+      "Insufficient sample size",
+      "Missing IRB approval",
+      "Leading questions in surveys",
+      "No control condition"
+    ]
+  },
+  {
+    "id": "g011",
+    "stage": "C",
+    "stage_name": "Research Plan",
+    "domain": "systems",
+    "title": "Systems Research Evaluation",
+    "content": "For systems research: 1) Define workload characteristics. 2) Choose representative benchmarks. 3) Measure latency, throughput, and resource utilization. 4) Test at multiple scales. 5) Compare against state-of-the-art systems.",
+    "checklist": [
+      "Select standard benchmarks for your domain",
+      "Measure end-to-end latency (p50, p95, p99)",
+      "Report throughput under varying load",
+      "Document hardware specifications fully",
+      "Test scalability (1x, 2x, 4x, 8x)",
+      "Compare against ≥2 state-of-the-art systems",
+      "Profile resource utilization (CPU, memory, I/O)",
+      "Include real-world workload if possible"
+    ],
+    "pitfalls": [
+      "Benchmarks not representative of real workloads",
+      "Missing tail latency (p99) measurements",
+      "Unfair hardware comparison",
+      "Not testing at scale"
+    ]
+  },
+  {
+    "id": "g012",
+    "stage": "E",
+    "stage_name": "Second Draft",
+    "domain": "ai_ml",
+    "title": "AI/ML Paper Review Checklist",
+    "content": "Before submission, check your AI/ML paper against common reviewer concerns: reproducibility, fair comparison, ablation completeness, clarity of contribution, ethical considerations.",
+    "checklist": [
+      "Reproducibility: all hyperparameters documented",
+      "Fair comparison: same compute budget for all methods",
+      "Ablation: each component validated independently",
+      "Contribution: clearly stated in introduction",
+      "Ethics: broader impact statement included",
+      "Code: availability mentioned (even if after review)",
+      "Writing: no unsupported superlatives",
+      "Figures: high resolution, colorblind-friendly"
+    ],
+    "pitfalls": [
+      "Reviewers can't reproduce your results",
+      "Unfair baselines using outdated implementations",
+      "Missing ablation for key components",
+      "Overclaiming without sufficient evidence"
+    ]
+  }
+]

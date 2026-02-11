@@ -1,209 +1,197 @@
-"""OpenAI SDK client wrapper - works with OpenAI, OpenRouter, and compatible APIs."""
+"""LLM client — talks directly to the Ollama Docker container (ollama/ollama:latest).
+
+No external SDK needed. Uses Ollama's native /api/chat REST endpoint via urllib.
+Model: qwen2.5:14b  |  100% FREE, 100% local.
+"""
 
 from __future__ import annotations
 
-import os
+import json
+import urllib.request
+import urllib.error
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Optional
-
-from openai import AsyncOpenAI, OpenAI
 
 from .types import Message, ToolCall, ToolDefinition, StreamChunk
 
 
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
 @dataclass
 class LLMConfig:
     """Configuration for LLM client."""
-    api_key: str
-    base_url: Optional[str] = None
-    model: str = "gpt-4o"
-    max_tokens: int = 512  # reduced for free tier limits
+    base_url: str = "http://localhost:11434"
+    model: str = "qwen2.5:14b"
+    max_tokens: int = 4096
     temperature: float = 0.7
+    # kept for backward compat — ignored for Ollama
+    api_key: str = "ollama"
 
+
+# ---------------------------------------------------------------------------
+# Auto-detect Ollama URL
+# ---------------------------------------------------------------------------
+
+def _detect_ollama_url() -> str:
+    """Find the first reachable Ollama instance (Docker container or local)."""
+    candidates = [
+        "http://localhost:11434",
+        "http://172.17.0.3:11434",
+        "http://host.docker.internal:11434",
+    ]
+    for url in candidates:
+        try:
+            req = urllib.request.urlopen(f"{url}/api/tags", timeout=2)
+            if req.status == 200:
+                return url
+        except Exception:
+            continue
+    return "http://localhost:11434"
+
+
+# ---------------------------------------------------------------------------
+# LLMClient — pure urllib, no SDK
+# ---------------------------------------------------------------------------
 
 class LLMClient:
-    """LLM client using OpenAI SDK - works with OpenRouter and other compatible APIs."""
+    """LLM client that talks to Ollama native /api/chat endpoint.
 
-    def __init__(self, config: LLMConfig):
+    Uses only stdlib urllib — no openai SDK, no pip installs needed.
+    """
+
+    def __init__(self, config: LLMConfig | None = None):
+        if config is None:
+            config = LLMConfig(base_url=_detect_ollama_url())
         self.config = config
-        self._client = OpenAI(api_key=config.api_key, base_url=config.base_url)
-        self._async_client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+
+    # ---- synchronous chat -------------------------------------------------
 
     def chat(
         self,
         messages: list[Message],
         tools: Optional[list[ToolDefinition]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> tuple[Message, Optional[list[ToolCall]]]:
-        """Synchronous chat completion."""
-        openai_messages = [m.to_dict() for m in messages]
-        openai_tools = [t.to_openai_tool() for t in tools] if tools else None
+        """Synchronous chat completion via Ollama /api/chat."""
+        ollama_messages = []
+        for m in messages:
+            content = m.content if isinstance(m.content, str) else str(m.content)
+            ollama_messages.append({"role": m.role.value, "content": content})
 
-        max_tokens = kwargs.pop("max_tokens", self.config.max_tokens)
-        temperature = kwargs.pop("temperature", self.config.temperature)
+        payload: dict[str, Any] = {
+            "model": self.config.model,
+            "messages": ollama_messages,
+            "stream": False,
+            "options": {
+                "temperature": kwargs.get("temperature", self.config.temperature),
+                "num_predict": kwargs.get("max_tokens", self.config.max_tokens),
+            },
+        }
 
-        response = self._client.chat.completions.create(
-            model=self.config.model,
-            messages=openai_messages,
-            tools=openai_tools,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            **kwargs
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            f"{self.config.base_url}/api/chat",
+            data=data,
+            headers={"Content-Type": "application/json"},
         )
 
-        choice = response.choices[0]
-        content = choice.message.content or ""
-        tool_calls = None
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                body = json.loads(resp.read().decode())
+        except urllib.error.URLError as e:
+            raise ConnectionError(
+                f"Cannot reach Ollama at {self.config.base_url}. "
+                f"Make sure the ollama/ollama Docker container is running.\n{e}"
+            )
 
-        if choice.message.tool_calls:
-            tool_calls = [ToolCall.from_openai(tc) for tc in choice.message.tool_calls]
+        content = body.get("message", {}).get("content", "")
+        return Message.assistant(content), None
 
-        return Message.assistant(content, tool_calls), tool_calls
+    # ---- async chat (thin wrapper) ----------------------------------------
 
     async def chat_async(
         self,
         messages: list[Message],
         tools: Optional[list[ToolDefinition]] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> tuple[Message, Optional[list[ToolCall]]]:
-        """Asynchronous chat completion."""
-        openai_messages = [m.to_dict() for m in messages]
-        openai_tools = [t.to_openai_tool() for t in tools] if tools else None
+        """Async chat — delegates to sync (Ollama is local, fast enough)."""
+        return self.chat(messages, tools, **kwargs)
 
-        max_tokens = kwargs.pop("max_tokens", self.config.max_tokens)
-        temperature = kwargs.pop("temperature", self.config.temperature)
-
-        response = await self._async_client.chat.completions.create(
-            model=self.config.model,
-            messages=openai_messages,
-            tools=openai_tools,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            **kwargs
-        )
-
-        choice = response.choices[0]
-        content = choice.message.content or ""
-        tool_calls = None
-
-        if choice.message.tool_calls:
-            tool_calls = [ToolCall.from_openai(tc) for tc in choice.message.tool_calls]
-
-        return Message.assistant(content, tool_calls), tool_calls
+    # ---- streaming --------------------------------------------------------
 
     async def stream_async(
         self,
         messages: list[Message],
         tools: Optional[list[ToolDefinition]] = None,
         include_reasoning: bool = False,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> AsyncIterator[StreamChunk]:
-        """Asynchronous streaming chat completion."""
-        openai_messages = [m.to_dict() for m in messages]
-        openai_tools = [t.to_openai_tool() for t in tools] if tools else None
+        """Streaming chat via Ollama /api/chat with stream=true."""
+        ollama_messages = []
+        for m in messages:
+            content = m.content if isinstance(m.content, str) else str(m.content)
+            ollama_messages.append({"role": m.role.value, "content": content})
 
-        # Build extra body for OpenRouter reasoning support
-        # Skip for Ollama/local providers that don't support it
-        extra_body = kwargs.pop("extra_body", {})
-        is_local = "localhost" in (self.config.base_url or "") or "host.docker.internal" in (self.config.base_url or "")
-        if include_reasoning and not is_local:
-            # OpenRouter / compatible providers use include_reasoning
-            extra_body["include_reasoning"] = True
-            # Nudge toward concise but meaningful scratchpad (effort only; max_tokens not allowed together)
-            extra_body.setdefault("reasoning", {"effort": "medium"})
+        payload: dict[str, Any] = {
+            "model": self.config.model,
+            "messages": ollama_messages,
+            "stream": True,
+            "options": {
+                "temperature": kwargs.get("temperature", self.config.temperature),
+                "num_predict": kwargs.get("max_tokens", self.config.max_tokens),
+            },
+        }
 
-        stream = await self._async_client.chat.completions.create(
-            model=self.config.model,
-            messages=openai_messages,
-            tools=openai_tools,
-            max_tokens=self.config.max_tokens,
-            temperature=self.config.temperature,
-            stream=True,
-            extra_body=extra_body if extra_body else None,
-            **kwargs
+        data = json.dumps(payload).encode()
+        req = urllib.request.Request(
+            f"{self.config.base_url}/api/chat",
+            data=data,
+            headers={"Content-Type": "application/json"},
         )
 
-        async for chunk in stream:
-            if not chunk.choices:
+        try:
+            resp = urllib.request.urlopen(req, timeout=120)
+        except urllib.error.URLError as e:
+            yield StreamChunk(content=f"[Ollama connection error: {e}]", finish_reason="error")
+            return
+
+        for raw_line in resp:
+            try:
+                chunk = json.loads(raw_line.decode())
+            except json.JSONDecodeError:
                 continue
 
-            choice = chunk.choices[0]
-            delta = choice.delta
+            text = chunk.get("message", {}).get("content")
+            done = chunk.get("done", False)
 
-            # Extract reasoning if available (OpenRouter)
-            reasoning = None
-            if hasattr(delta, "reasoning_content") and delta.reasoning_content:
-                reasoning = delta.reasoning_content
-            elif hasattr(delta, "model_extra") and delta.model_extra:
-                reasoning = delta.model_extra.get("reasoning_content")
+            if text:
+                yield StreamChunk(content=text, finish_reason="stop" if done else None)
 
-            # Extract content
-            content = delta.content if delta.content else None
+            if done:
+                return
 
-            # Handle structured content (list format from some providers)
-            if isinstance(content, list):
-                texts = []
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        texts.append(block.get("text", ""))
-                    elif isinstance(block, str):
-                        texts.append(block)
-                content = "".join(texts) if texts else None
 
-            yield StreamChunk(
-                content=content,
-                reasoning=reasoning,
-                finish_reason=choice.finish_reason
-            )
-
+# ---------------------------------------------------------------------------
+# Factory
+# ---------------------------------------------------------------------------
 
 def create_client(
-    provider: str = "openrouter",
+    provider: Optional[str] = None,
     model: Optional[str] = None,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
 ) -> LLMClient:
-    """Create an LLM client for the specified provider.
-    
-    Providers:
-    - openrouter: Uses OpenRouter API (default)
-    - openai: Uses OpenAI API directly
-    - gemini: Uses Google Gemini API (free tier available)
-    - ollama: Uses local Ollama server
+    """Create an LLM client.
+
+    Always uses the local Ollama Docker container (ollama/ollama:latest)
+    with qwen2.5:14b.  No API keys, no .env, no external SDKs.
     """
-    if provider == "openrouter":
-        key = api_key or os.environ.get("OPENROUTER_API_KEY")
-        if not key:
-            raise ValueError("OPENROUTER_API_KEY not set")
-        return LLMClient(LLMConfig(
-            api_key=key,
-            base_url="https://openrouter.ai/api/v1",
-            model=model or os.environ.get("OPENROUTER_MODEL", "deepseek/deepseek-r1-0528:free"),
-            max_tokens=512  # keep low for free tier
-        ))
-    elif provider == "openai":
-        key = api_key or os.environ.get("OPENAI_API_KEY")
-        if not key:
-            raise ValueError("OPENAI_API_KEY not set")
-        return LLMClient(LLMConfig(
-            api_key=key,
-            model=model or "gpt-4o"
-        ))
-    elif provider == "gemini":
-        key = api_key or os.environ.get("GEMINI_API_KEY")
-        if not key:
-            raise ValueError("GEMINI_API_KEY not set")
-        return LLMClient(LLMConfig(
-            api_key=key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/openai",
-            model=model or "gemini-2.0-flash",
-            max_tokens=1024
-        ))
-    elif provider == "ollama":
-        return LLMClient(LLMConfig(
-            api_key="ollama",
-            base_url=os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
-            model=model or os.environ.get("OLLAMA_MODEL", "qwen2.5:14b"),
-            max_tokens=2048
-        ))
-    else:
-        raise ValueError(f"Unknown provider: {provider}")
+    ollama_url = _detect_ollama_url()
+    return LLMClient(LLMConfig(
+        base_url=ollama_url,
+        model=model or "qwen2.5:14b",
+        max_tokens=4096,
+        temperature=0.7,
+    ))
