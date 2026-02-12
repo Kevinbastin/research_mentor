@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from academic_research_mentor.agent import MentorAgent, ToolRegistry, create_default_tools
 from academic_research_mentor.llm import create_client
 from academic_research_mentor.llm.types import StreamChunk, Message, Role
+from academic_research_mentor.latex_sanitizer import sanitize_latex
 
 app = FastAPI(title="Academic Research Mentor API")
 
@@ -253,7 +254,7 @@ async def chat(request: ChatRequest):
     try:
         user_payload = request.content_parts if request.content_parts else request.prompt
         response = await mentor_agent.chat_async(user_payload, context=context if context else None)
-        return ChatResponse(response=response)
+        return ChatResponse(response=sanitize_latex(response))
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -287,7 +288,7 @@ async def chat_stream(request: ChatRequest):
                     yield f"data: {json.dumps({'type': 'reasoning', 'content': chunk.reasoning})}\n\n"
                 # Handle content
                 if chunk.content and not chunk.tool_status:  # Don't emit content for tool status messages
-                    yield f"data: {json.dumps({'type': 'content', 'content': chunk.content})}\n\n"
+                    yield f"data: {json.dumps({'type': 'content', 'content': sanitize_latex(chunk.content)})}\n\n"
             
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
